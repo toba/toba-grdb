@@ -98,7 +98,7 @@ import Foundation
 /// - ``databaseDataDecodingStrategy(for:)``
 /// - ``databaseDateDecodingStrategy(for:)``
 /// - ``databaseJSONDecoder(for:)-7lmxd``
-/// - ``databaseDecodingUserInfo-77jim``
+/// - ``databaseDecodingUserInfo-6zhzy``
 /// - ``DatabaseColumnDecodingStrategy``
 /// - ``DatabaseDataDecodingStrategy``
 /// - ``DatabaseDateDecodingStrategy``
@@ -135,7 +135,7 @@ public protocol FetchableRecord {
     /// // A FetchableRecord + Decodable record
     /// struct Player: FetchableRecord, Decodable {
     ///     // Customize the decoder name when decoding a database row
-    ///     static var databaseDecodingUserInfo: [CodingUserInfoKey: Any] {
+    ///     static var databaseDecodingUserInfo: [CodingUserInfoKey: any Sendable] {
     ///         [decoderName: "Database"]
     ///     }
     ///
@@ -156,22 +156,9 @@ public protocol FetchableRecord {
     /// ```
     ///
     /// > Important: Make sure the `databaseDecodingUserInfo` property is
-    /// > explicitly declared as `[CodingUserInfoKey: Any]`. If it is not,
-    /// > the Swift compiler may silently miss the protocol requirement.
-    ///
-    /// > Important: Make sure the property is declared as a computed
-    /// > property (`static var`), instead of a stored property
-    /// > (`static let`). Computed properties avoid a compiler diagnostic
-    /// > with stored properties:
-    /// >
-    /// > ```swift
-    /// > // static property 'databaseDecodingUserInfo' is not
-    /// > // concurrency-safe because non-'Sendable' type
-    /// > // '[CodingUserInfoKey: Any]' may have shared
-    /// > // mutable state.
-    /// > static let databaseDecodingUserInfo: [CodingUserInfoKey: Any] = [decoderName: "Database"]
-    /// > ```
-    static var databaseDecodingUserInfo: [CodingUserInfoKey: Any] { get }
+    /// > explicitly declared as `[CodingUserInfoKey: any Sendable]`. If it is
+    /// > not, the Swift compiler may silently miss the protocol requirement.
+    static var databaseDecodingUserInfo: [CodingUserInfoKey: any Sendable] { get }
     
     /// Returns the `JSONDecoder` that decodes the value for a given column.
     ///
@@ -249,7 +236,7 @@ extension FetchableRecord {
     /// `Decodable.init(from:)` initializer.
     ///
     /// The default implementation returns an empty dictionary.
-    public static var databaseDecodingUserInfo: [CodingUserInfoKey: Any] {
+    public static var databaseDecodingUserInfo: [CodingUserInfoKey: any Sendable] {
         [:]
     }
     

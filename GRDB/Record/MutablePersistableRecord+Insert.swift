@@ -1,24 +1,24 @@
 // MARK: - Insert Callbacks
 
-extension MutablePersistableRecord {
+public extension MutablePersistableRecord {
     @inline(__always)
     @inlinable
-    public mutating func willInsert(_ db: Database) throws { }
-    
+    mutating func willInsert(_: Database) throws {}
+
     @inline(__always)
     @inlinable
-    public func aroundInsert(_ db: Database, insert: () throws -> InsertionSuccess) throws {
+    func aroundInsert(_: Database, insert: () throws -> InsertionSuccess) throws {
         _ = try insert()
     }
-    
+
     @inline(__always)
     @inlinable
-    public mutating func didInsert(_ inserted: InsertionSuccess) { }
+    mutating func didInsert(_: InsertionSuccess) {}
 }
 
 // MARK: - Insert
 
-extension MutablePersistableRecord {
+public extension MutablePersistableRecord {
     /// Executes an `INSERT` statement.
     ///
     /// For example:
@@ -31,32 +31,30 @@ extension MutablePersistableRecord {
     /// ```
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
-    @inlinable // allow specialization so that empty callbacks are removed
-    public mutating func insert(
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
+    @inlinable  // allow specialization so that empty callbacks are removed
+    mutating func insert(
         _ db: Database,
-        onConflict conflictResolution: Database.ConflictResolution? = nil)
-    throws
+        onConflict conflictResolution: Database.ConflictResolution? = nil
+    )
+        throws
     {
         try willSave(db)
-        
+
         var saved: PersistenceSuccess?
         try aroundSave(db) {
             let inserted = try insertWithCallbacks(db, onConflict: conflictResolution)
             saved = PersistenceSuccess(inserted)
             return saved!
         }
-        
-        guard let saved else {
-            try persistenceCallbackMisuse("aroundSave")
-        }
+
+        guard let saved else { try persistenceCallbackMisuse("aroundSave") }
         didSave(saved)
     }
-    
+
     /// Executes an `INSERT` statement, and returns the inserted record.
     ///
     /// For example:
@@ -69,17 +67,17 @@ extension MutablePersistableRecord {
     /// ```
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
     /// - returns: The inserted record.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
-    @inlinable // allow specialization so that empty callbacks are removed
-    public func inserted(
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
+    @inlinable  // allow specialization so that empty callbacks are removed
+    func inserted(
         _ db: Database,
-        onConflict conflictResolution: Database.ConflictResolution? = nil)
-    throws -> Self
+        onConflict conflictResolution: Database.ConflictResolution? = nil
+    )
+        throws -> Self
     {
         var result = self
         try result.insert(db, onConflict: conflictResolution)
@@ -90,12 +88,12 @@ extension MutablePersistableRecord {
 // MARK: - Insert and Fetch
 
 extension MutablePersistableRecord {
-#if GRDBCUSTOMSQLITE || SQLITE_HAS_CODEC
-    /// Executes an `INSERT RETURNING` statement, and returns a new record built
-    /// from the inserted row.
+    #if GRDBCUSTOMSQLITE || SQLITE_HAS_CODEC
+    /// Executes an `INSERT RETURNING` statement, and returns a new record built from the inserted
+    /// row.
     ///
-    /// This method is equivalent to ``insertAndFetch(_:onConflict:as:)``,
-    /// with `Self` as the `returnedType` argument:
+    /// This method is equivalent to ``insertAndFetch(_:onConflict:as:)``, with `Self` as the
+    /// `returnedType` argument:
     ///
     /// ```swift
     /// // Equivalent
@@ -104,30 +102,29 @@ extension MutablePersistableRecord {
     /// ```
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
     /// - returns: The inserted record.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
-    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be
-    ///   thrown if the insertion failed due to the IGNORE conflict policy.
-    @inlinable // allow specialization so that empty callbacks are removed
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
+    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be thrown if the insertion
+    ///   failed due to the IGNORE conflict policy.
+    @inlinable  // allow specialization so that empty callbacks are removed
     public func insertAndFetch(
         _ db: Database,
-        onConflict conflictResolution: Database.ConflictResolution? = nil)
-    throws -> Self
-    where Self: FetchableRecord
+        onConflict conflictResolution: Database.ConflictResolution? = nil
+    )
+        throws -> Self
+        where Self: FetchableRecord
     {
         var result = self
         return try result.insertAndFetch(db, onConflict: conflictResolution, as: Self.self)
     }
-    
-    /// Executes an `INSERT RETURNING` statement, and returns a new record built
-    /// from the inserted row.
+
+    /// Executes an `INSERT RETURNING` statement, and returns a new record built from the inserted
+    /// row.
     ///
-    /// This method helps dealing with default column values and
-    /// generated columns.
+    /// This method helps dealing with default column values and generated columns.
     ///
     /// For example:
     ///
@@ -168,36 +165,35 @@ extension MutablePersistableRecord {
     /// ```
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
     /// - parameter returnedType: The type of the returned record.
     /// - returns: A record of type `returnedType`.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
-    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be
-    ///   thrown if the insertion failed due to the IGNORE conflict policy.
-    @inlinable // allow specialization so that empty callbacks are removed
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
+    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be thrown if the insertion
+    ///   failed due to the IGNORE conflict policy.
+    @inlinable  // allow specialization so that empty callbacks are removed
     public mutating func insertAndFetch<T: FetchableRecord & TableRecord>(
         _ db: Database,
         onConflict conflictResolution: Database.ConflictResolution? = nil,
-        as returnedType: T.Type)
-    throws -> T
+        as _: T.Type
+    )
+        throws -> T
     {
         let record = self
-        return try insertAndFetch(db, onConflict: conflictResolution, selection: T.databaseSelection) {
-            if let result = try T.fetchOne($0) {
-                return result
-            }
+        return try insertAndFetch(
+            db, onConflict: conflictResolution, selection: T.databaseSelection
+        ) {
+            if let result = try T.fetchOne($0) { return result }
             throw record.recordNotFound(db)
         }
     }
-    
-    /// Executes an `INSERT RETURNING` statement, and returns the selected
-    /// columns from the inserted row.
+
+    /// Executes an `INSERT RETURNING` statement, and returns the selected columns from the inserted
+    /// row.
     ///
-    /// This method helps dealing with default column values and
-    /// generated columns.
+    /// This method helps dealing with default column values and generated columns.
     ///
     /// For example:
     ///
@@ -231,28 +227,28 @@ extension MutablePersistableRecord {
     /// ```
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
     /// - parameter selection: The returned columns (must not be empty).
-    /// - parameter fetch: A closure that executes its ``Statement`` argument.
-    ///   If the conflict policy is `IGNORE`, the statement may return no row.
+    /// - parameter fetch: A closure that executes its ``Statement`` argument. If the conflict
+    ///   policy is `IGNORE`, the statement may return no row.
     /// - returns: The result of the `fetch` function.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
     /// - precondition: `selection` is not empty.
-    @inlinable // allow specialization so that empty callbacks are removed
+    @inlinable  // allow specialization so that empty callbacks are removed
     public mutating func insertAndFetch<T>(
         _ db: Database,
         onConflict conflictResolution: Database.ConflictResolution? = nil,
         selection: [any SQLSelectable],
-        fetch: (Statement) throws -> T)
-    throws -> T
+        fetch: (Statement) throws -> T
+    )
+        throws -> T
     {
         GRDBPrecondition(!selection.isEmpty, "Invalid empty selection")
-        
+
         try willSave(db)
-        
+
         var success: (inserted: InsertionSuccess, returned: T)?
         try aroundSave(db) {
             success = try insertAndFetchWithCallbacks(
@@ -261,19 +257,16 @@ extension MutablePersistableRecord {
                 fetch: fetch)
             return PersistenceSuccess(success!.inserted)
         }
-        
-        guard let success else {
-            try persistenceCallbackMisuse("aroundSave")
-        }
+
+        guard let success else { try persistenceCallbackMisuse("aroundSave") }
         didSave(PersistenceSuccess(success.inserted))
         return success.returned
     }
-    
-    /// Executes an `INSERT RETURNING` statement, and returns the selected
-    /// columns from the inserted row.
+
+    /// Executes an `INSERT RETURNING` statement, and returns the selected columns from the inserted
+    /// row.
     ///
-    /// This method helps dealing with default column values and
-    /// generated columns.
+    /// This method helps dealing with default column values and generated columns.
     ///
     /// For example:
     ///
@@ -313,34 +306,34 @@ extension MutablePersistableRecord {
     /// ```
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
-    /// - parameter fetch: A closure that executes its ``Statement`` argument.
-    ///   If the conflict policy is `IGNORE`, the statement may return no row.
-    /// - parameter select: A closure that returns the returned columns
-    ///   (must not be empty).
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
+    /// - parameter fetch: A closure that executes its ``Statement`` argument. If the conflict
+    ///   policy is `IGNORE`, the statement may return no row.
+    /// - parameter select: A closure that returns the returned columns (must not be empty).
     /// - returns: The result of the `fetch` function.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
     /// - precondition: The result of `select` is not empty.
-    @inlinable // allow specialization so that empty callbacks are removed
+    @inlinable  // allow specialization so that empty callbacks are removed
     public mutating func insertAndFetch<T>(
         _ db: Database,
         onConflict conflictResolution: Database.ConflictResolution? = nil,
         fetch: (Statement) throws -> T,
         select: (DatabaseComponents) throws -> [any SQLSelectable]
     ) throws -> T
-    where Self: TableRecord
+        where Self: TableRecord
     {
-        try insertAndFetch(db, onConflict: conflictResolution, selection: select(Self.databaseComponents), fetch: fetch)
+        try insertAndFetch(
+            db, onConflict: conflictResolution, selection: select(Self.databaseComponents),
+            fetch: fetch)
     }
-#else
-    /// Executes an `INSERT RETURNING` statement, and returns a new record built
-    /// from the inserted row.
+    #else
+    /// Executes an `INSERT RETURNING` statement, and returns a new record built from the inserted
+    /// row.
     ///
-    /// This method is equivalent to ``insertAndFetch(_:onConflict:as:)``,
-    /// with `Self` as the `returnedType` argument:
+    /// This method is equivalent to ``insertAndFetch(_:onConflict:as:)``, with `Self` as the
+    /// `returnedType` argument:
     ///
     /// ```swift
     /// // Equivalent
@@ -349,31 +342,29 @@ extension MutablePersistableRecord {
     /// ```
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
     /// - returns: The inserted record.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
-    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be
-    ///   thrown if the insertion failed due to the IGNORE conflict policy.
-    @inlinable // allow specialization so that empty callbacks are removed
-    @available(iOS 15, macOS 12, tvOS 15, watchOS 8, *) // SQLite 3.35.0+
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
+    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be thrown if the insertion
+    ///   failed due to the IGNORE conflict policy.
+    @inlinable  // allow specialization so that empty callbacks are removed
     public func insertAndFetch(
         _ db: Database,
-        onConflict conflictResolution: Database.ConflictResolution? = nil)
-    throws -> Self
-    where Self: FetchableRecord
+        onConflict conflictResolution: Database.ConflictResolution? = nil
+    )
+        throws -> Self
+        where Self: FetchableRecord
     {
         var result = self
         return try result.insertAndFetch(db, onConflict: conflictResolution, as: Self.self)
     }
-    
-    /// Executes an `INSERT RETURNING` statement, and returns a new record built
-    /// from the inserted row.
+
+    /// Executes an `INSERT RETURNING` statement, and returns a new record built from the inserted
+    /// row.
     ///
-    /// This method helps dealing with default column values and
-    /// generated columns.
+    /// This method helps dealing with default column values and generated columns.
     ///
     /// For example:
     ///
@@ -414,37 +405,35 @@ extension MutablePersistableRecord {
     /// ```
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
     /// - parameter returnedType: The type of the returned record.
     /// - returns: A record of type `returnedType`.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
-    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be
-    ///   thrown if the insertion failed due to the IGNORE conflict policy.
-    @inlinable // allow specialization so that empty callbacks are removed
-    @available(iOS 15, macOS 12, tvOS 15, watchOS 8, *) // SQLite 3.35.0+
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
+    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be thrown if the insertion
+    ///   failed due to the IGNORE conflict policy.
+    @inlinable  // allow specialization so that empty callbacks are removed
     public mutating func insertAndFetch<T: FetchableRecord & TableRecord>(
         _ db: Database,
         onConflict conflictResolution: Database.ConflictResolution? = nil,
-        as returnedType: T.Type)
-    throws -> T
+        as _: T.Type
+    )
+        throws -> T
     {
         let record = self
-        return try insertAndFetch(db, onConflict: conflictResolution, selection: T.databaseSelection) {
-            if let result = try T.fetchOne($0) {
-                return result
-            }
+        return try insertAndFetch(
+            db, onConflict: conflictResolution, selection: T.databaseSelection
+        ) {
+            if let result = try T.fetchOne($0) { return result }
             throw record.recordNotFound(db)
         }
     }
-    
-    /// Executes an `INSERT RETURNING` statement, and returns the selected
-    /// columns from the inserted row.
+
+    /// Executes an `INSERT RETURNING` statement, and returns the selected columns from the inserted
+    /// row.
     ///
-    /// This method helps dealing with default column values and
-    /// generated columns.
+    /// This method helps dealing with default column values and generated columns.
     ///
     /// For example:
     ///
@@ -478,29 +467,28 @@ extension MutablePersistableRecord {
     /// ```
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
     /// - parameter selection: The returned columns (must not be empty).
-    /// - parameter fetch: A closure that executes its ``Statement`` argument.
-    ///   If the conflict policy is `IGNORE`, the statement may return no row.
+    /// - parameter fetch: A closure that executes its ``Statement`` argument. If the conflict
+    ///   policy is `IGNORE`, the statement may return no row.
     /// - returns: The result of the `fetch` function.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
     /// - precondition: `selection` is not empty.
-    @inlinable // allow specialization so that empty callbacks are removed
-    @available(iOS 15, macOS 12, tvOS 15, watchOS 8, *) // SQLite 3.35.0+
+    @inlinable  // allow specialization so that empty callbacks are removed
     public mutating func insertAndFetch<T>(
         _ db: Database,
         onConflict conflictResolution: Database.ConflictResolution? = nil,
         selection: [any SQLSelectable],
-        fetch: (Statement) throws -> T)
-    throws -> T
+        fetch: (Statement) throws -> T
+    )
+        throws -> T
     {
         GRDBPrecondition(!selection.isEmpty, "Invalid empty selection")
-        
+
         try willSave(db)
-        
+
         var success: (inserted: InsertionSuccess, returned: T)?
         try aroundSave(db) {
             success = try insertAndFetchWithCallbacks(
@@ -509,19 +497,16 @@ extension MutablePersistableRecord {
                 fetch: fetch)
             return PersistenceSuccess(success!.inserted)
         }
-        
-        guard let success else {
-            try persistenceCallbackMisuse("aroundSave")
-        }
+
+        guard let success else { try persistenceCallbackMisuse("aroundSave") }
         didSave(PersistenceSuccess(success.inserted))
         return success.returned
     }
-    
-    /// Executes an `INSERT RETURNING` statement, and returns the selected
-    /// columns from the inserted row.
+
+    /// Executes an `INSERT RETURNING` statement, and returns the selected columns from the inserted
+    /// row.
     ///
-    /// This method helps dealing with default column values and
-    /// generated columns.
+    /// This method helps dealing with default column values and generated columns.
     ///
     /// For example:
     ///
@@ -561,26 +546,23 @@ extension MutablePersistableRecord {
     /// ```
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
-    /// - parameter fetch: A closure that executes its ``Statement`` argument.
-    ///   If the conflict policy is `IGNORE`, the statement may return no row.
-    /// - parameter select: A closure that returns the returned columns
-    ///   (must not be empty).
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
+    /// - parameter fetch: A closure that executes its ``Statement`` argument. If the conflict
+    ///   policy is `IGNORE`, the statement may return no row.
+    /// - parameter select: A closure that returns the returned columns (must not be empty).
     /// - returns: The result of the `fetch` function.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
     /// - precondition: The result of `select` is not empty.
-    @inlinable // allow specialization so that empty callbacks are removed
-    @available(iOS 15, macOS 12, tvOS 15, watchOS 8, *) // SQLite 3.35.0+
+    @inlinable  // allow specialization so that empty callbacks are removed
     public mutating func insertAndFetch<T>(
         _ db: Database,
         onConflict conflictResolution: Database.ConflictResolution? = nil,
         fetch: (Statement) throws -> T,
         select: (DatabaseComponents) throws -> [any SQLSelectable]
     ) throws -> T
-    where Self: TableRecord
+        where Self: TableRecord
     {
         try insertAndFetch(
             db,
@@ -588,38 +570,42 @@ extension MutablePersistableRecord {
             selection: select(Self.databaseComponents),
             fetch: fetch)
     }
-#endif
+    #endif
 }
 
 // MARK: - Internals
 
 extension MutablePersistableRecord {
     /// Executes an `INSERT` statement, and runs insertion callbacks.
-    @inlinable // allow specialization so that empty callbacks are removed
+    @inlinable  // allow specialization so that empty callbacks are removed
     mutating func insertWithCallbacks(
         _ db: Database,
-        onConflict conflictResolution: Database.ConflictResolution?)
-    throws -> InsertionSuccess
+        onConflict conflictResolution: Database.ConflictResolution?
+    )
+        throws -> InsertionSuccess
     {
-        let (inserted, _) = try insertAndFetchWithCallbacks(db, onConflict: conflictResolution, selection: []) {
+        let (inserted, _) = try insertAndFetchWithCallbacks(
+            db, onConflict: conflictResolution, selection: []
+        ) {
             // Nothing to fetch
             try $0.execute()
         }
         return inserted
     }
-    
-    /// Executes an `INSERT` statement, with `RETURNING` clause if `selection`
-    /// is not empty, and runs insertion callbacks.
-    @inlinable // allow specialization so that empty callbacks are removed
+
+    /// Executes an `INSERT` statement, with `RETURNING` clause if `selection` is not empty, and
+    /// runs insertion callbacks.
+    @inlinable  // allow specialization so that empty callbacks are removed
     mutating func insertAndFetchWithCallbacks<T>(
         _ db: Database,
         onConflict conflictResolution: Database.ConflictResolution?,
         selection: [any SQLSelectable],
-        fetch: (Statement) throws -> T)
-    throws -> (InsertionSuccess, T)
+        fetch: (Statement) throws -> T
+    )
+        throws -> (InsertionSuccess, T)
     {
         try willInsert(db)
-        
+
         var success: (inserted: InsertionSuccess, returned: T)?
         try aroundInsert(db) {
             success = try insertAndFetchWithoutCallbacks(
@@ -628,25 +614,26 @@ extension MutablePersistableRecord {
                 fetch: fetch)
             return success!.inserted
         }
-        
-        guard let success else {
-            try persistenceCallbackMisuse("aroundInsert")
-        }
+
+        guard let success else { try persistenceCallbackMisuse("aroundInsert") }
         didInsert(success.inserted)
         return success
     }
-    
-    /// Executes an `INSERT` statement, with `RETURNING` clause if `selection`
-    /// is not empty, and DOES NOT run insertion callbacks.
+
+    /// Executes an `INSERT` statement, with `RETURNING` clause if `selection` is not empty, and
+    /// DOES NOT run insertion callbacks.
     @usableFromInline
     func insertAndFetchWithoutCallbacks<T>(
         _ db: Database,
         onConflict conflictResolution: Database.ConflictResolution?,
         selection: [any SQLSelectable],
-        fetch: (Statement) throws -> T)
-    throws -> (InsertionSuccess, T)
+        fetch: (Statement) throws -> T
+    )
+        throws -> (InsertionSuccess, T)
     {
-        let conflictResolution = conflictResolution ?? type(of: self)
+        // sm:ignore:next useSelfNotTypeName Self binds to the conforming type, not the subclass
+        let conflictResolution = conflictResolution
+            ?? type(of: self)
             .persistenceConflictPolicy
             .conflictResolutionForInsert
         let dao = try DAO(db, self)
@@ -655,18 +642,15 @@ extension MutablePersistableRecord {
             onConflict: conflictResolution,
             returning: selection)
         let returned = try fetch(statement)
-        
+
         let rowIDColumn = dao.primaryKey.rowIDColumn
         let rowid = db.lastInsertedRowID
-        
-        // Update the persistenceContainer with the inserted rowid.
-        // This allows the Record class to set its `hasDatabaseChanges` property
-        // to false in its `aroundInsert` callback.
+
+        // Update the persistenceContainer with the inserted rowid. This allows the Record class to
+        // set its `hasDatabaseChanges` property to false in its `aroundInsert` callback.
         var persistenceContainer = dao.persistenceContainer
-        if let rowIDColumn {
-            persistenceContainer[rowIDColumn] = rowid
-        }
-        
+        if let rowIDColumn { persistenceContainer[rowIDColumn] = rowid }
+
         let inserted = InsertionSuccess(
             rowID: rowid,
             rowIDColumn: rowIDColumn,

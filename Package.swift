@@ -1,4 +1,4 @@
-// swift-tools-version:6.1
+// swift-tools-version:6.4
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import Foundation
@@ -85,10 +85,11 @@ let package = Package(
     name: "GRDB",
     defaultLocalization: "en", // for tests
     platforms: [
-        .iOS(.v13),
-        .macOS(.v10_15),
-        .tvOS(.v13),
-        .watchOS(.v7),
+        .iOS(.v27),
+        .macOS(.v27),
+        .tvOS(.v27),
+        .watchOS(.v27),
+        .visionOS(.v27),
     ],
     products: [
         // One product over both targets. A consumer writes `import GRDB` and
@@ -149,12 +150,7 @@ let package = Package(
                 .copy("GRDBTests/GRDBCipher/db.SQLCipher3"),
             ],
             cSettings: cSettings,
-            swiftSettings: swiftSettings + [
-                // Tests still use the Swift 5 language mode.
-                .swiftLanguageMode(.v5),
-                .enableUpcomingFeature("InferSendableFromCaptures"),
-                .enableUpcomingFeature("GlobalActorIsolatedTypesUsability"),
-            ])
+            swiftSettings: swiftSettings)
     ],
     swiftLanguageModes: [.v6]
 )

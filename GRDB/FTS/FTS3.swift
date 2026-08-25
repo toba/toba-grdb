@@ -30,28 +30,27 @@
 public struct FTS3 {
     /// Options for Latin script characters.
     public enum Diacritics: Sendable {
-        /// Do not remove diacritics from Latin script characters. This option
-        /// matches the `remove_diacritics=0` tokenizer argument.
+        /// Do not remove diacritics from Latin script characters. This option matches the
+        /// `remove_diacritics=0` tokenizer argument.
         ///
         /// Related SQLite documentation: <https://www.sqlite.org/fts3.html#tokenizer>
         case keep
-        
-        /// Remove diacritics from Latin script characters. This option matches
-        /// the `remove_diacritics=1` tokenizer argument.
+
+        /// Remove diacritics from Latin script characters. This option matches the
+        /// `remove_diacritics=1` tokenizer argument.
         case removeLegacy
-        
+
         #if GRDBCUSTOMSQLITE || SQLITE_HAS_CODEC
-        /// Remove diacritics from Latin script characters. This option matches
-        /// the `remove_diacritics=2` tokenizer argument.
+        /// Remove diacritics from Latin script characters. This option matches the
+        /// `remove_diacritics=2` tokenizer argument.
         case remove
         #else
-        /// Remove diacritics from Latin script characters. This option matches
-        /// the `remove_diacritics=2` tokenizer argument.
-        @available(iOS 14, macOS 10.16, tvOS 14, *) // SQLite 3.27+
+        /// Remove diacritics from Latin script characters. This option matches the
+        /// `remove_diacritics=2` tokenizer argument.
         case remove
         #endif
     }
-    
+
     /// Creates an FTS3 module.
     ///
     /// For example:
@@ -64,8 +63,8 @@ public struct FTS3 {
     /// ```
     ///
     /// See ``Database/create(virtualTable:options:using:_:)``
-    public init() { }
-    
+    public init() {}
+
     /// Returns an array of tokens found in the string argument.
     ///
     /// For example:
@@ -96,51 +95,53 @@ public struct FTS3 {
     /// - throws: A ``DatabaseError`` whenever an SQLite error occurs.
     public static func tokenize(
         _ string: String,
-        withTokenizer tokenizer: FTS3TokenizerDescriptor = .simple)
-    throws -> [String]
+        withTokenizer tokenizer: FTS3TokenizerDescriptor = .simple
+    )
+        throws -> [String]
     {
         try DatabaseQueue().inDatabase { db in
             var tokenizerChunks: [String] = []
             tokenizerChunks.append(tokenizer.name)
-            for option in tokenizer.arguments {
-                tokenizerChunks.append("\"\(option)\"")
-            }
+            for option in tokenizer.arguments { tokenizerChunks.append("\"\(option)\"") }
             let tokenizerSQL = tokenizerChunks.joined(separator: ", ")
             try db.execute(sql: "CREATE VIRTUAL TABLE tokens USING fts3tokenize(\(tokenizerSQL))")
-            return try String.fetchAll(db, sql: """
-                SELECT token FROM tokens WHERE input = ? ORDER BY position
-                """, arguments: [string])
+            return try String.fetchAll(
+                db,
+                sql: """
+                    SELECT token FROM tokens WHERE input = ? ORDER BY position
+                    """, arguments: [string])
         }
     }
 }
 
 extension FTS3: VirtualTableModule {
     public var moduleName: String { "fts3" }
-    
-    public func makeTableDefinition(configuration: VirtualTableConfiguration) -> FTS3TableDefinition {
-        FTS3TableDefinition()
-    }
-    
-    public func moduleArguments(for definition: FTS3TableDefinition, in db: Database) -> [String] {
+
+    public func makeTableDefinition(
+        configuration _: VirtualTableConfiguration
+    ) -> FTS3TableDefinition { .init() }
+
+    public func moduleArguments(for definition: FTS3TableDefinition, in _: Database) -> [String] {
         var arguments = definition.columns
+
         if let tokenizer = definition.tokenizer {
             if tokenizer.arguments.isEmpty {
                 arguments.append("tokenize=\(tokenizer.name)")
             } else {
                 arguments.append(
-                    "tokenize=\(tokenizer.name) " + tokenizer.arguments
+                    "tokenize=\(tokenizer.name) "
+                        + tokenizer.arguments
                         .map { "\"\($0)\"" as String }
                         .joined(separator: " "))
             }
         }
         return arguments
     }
-    
-    public func database(_ db: Database, didCreate tableName: String, using definition: FTS3TableDefinition) { }
+
+    public func database(_: Database, didCreate _: String, using _: FTS3TableDefinition) {}
 }
 
-/// A `FTS3TableDefinition` lets you define the components of an FTS3
-/// virtual table.
+/// A `FTS3TableDefinition` lets you define the components of an FTS3 virtual table.
 ///
 /// You don't create instances of this class. Instead, you use the `Database`
 /// ``Database/create(virtualTable:options:using:_:)`` method:
@@ -152,7 +153,7 @@ extension FTS3: VirtualTableModule {
 /// ```
 public final class FTS3TableDefinition {
     fileprivate var columns: [String] = []
-    
+
     /// The virtual table tokenizer.
     ///
     /// For example:
@@ -164,9 +165,10 @@ public final class FTS3TableDefinition {
     /// }
     /// ```
     ///
-    /// Related SQLite documentation: <https://www.sqlite.org/fts3.html#creating_and_destroying_fts_tables>
+    /// Related SQLite documentation:
+    /// <https://www.sqlite.org/fts3.html#creating_and_destroying_fts_tables>
     public var tokenizer: FTS3TokenizerDescriptor?
-    
+
     /// Appends a table column.
     ///
     /// For example:
@@ -179,12 +181,10 @@ public final class FTS3TableDefinition {
     /// ```
     ///
     /// - parameter name: the column name.
-    public func column(_ name: String) {
-        columns.append(name)
-    }
+    public func column(_ name: String) { columns.append(name) }
 }
 
-// Explicit non-conformance to Sendable: `FTS3TableDefinition` is a mutable
-// class and there is no known reason for making it thread-safe.
+// Explicit non-conformance to Sendable: `FTS3TableDefinition` is a mutable class and there is no
+// known reason for making it thread-safe.
 @available(*, unavailable)
-extension FTS3TableDefinition: Sendable { }
+extension FTS3TableDefinition: Sendable {}

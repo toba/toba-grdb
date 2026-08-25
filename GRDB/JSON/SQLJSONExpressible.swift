@@ -7,13 +7,11 @@
 /// - They provide Swift APIs for accessing their JSON subcomponents at
 /// the SQL level.
 ///
-/// - When used in a JSON-building function such as
-///   ``Database/jsonArray(_:)-8p2p8`` or ``Database/jsonObject(_:)``,
-///   they are parsed and interpreted as JSON, not as plain strings.
+/// - When used in a JSON-building function such as ``Database/jsonArray(_:)-8p2p8`` or
+///   ``Database/jsonObject(_:)``, they are parsed and interpreted as JSON, not as plain strings.
 ///
-/// To build a JSON value, create a ``JSONColumn``, or call the
-///  ``SQLSpecificExpressible/asJSON`` property of any
-/// other expression.
+/// To build a JSON value, create a ``JSONColumn``, or call the ``SQLSpecificExpressible/asJSON``
+/// property of any other expression.
 ///
 /// For example, here are some JSON values:
 ///
@@ -44,8 +42,9 @@
 ///
 /// ## Access JSON subcomponents
 ///
-/// JSON values provide access to the [`->` and `->>` SQL operators](https://www.sqlite.org/json1.html)
-/// and other SQLite JSON functions:
+/// JSON values provide access to the
+/// [`->` and `->>` SQL operators](https://www.sqlite.org/json1.html) and other SQLite JSON
+/// functions:
 ///
 /// ```swift
 /// let info = JSONColumn("info")
@@ -65,13 +64,12 @@
 ///
 /// ## Build JSON objects and arrays from JSON values
 ///
-/// When used in a JSON-building function such as
-/// ``Database/jsonArray(_:)-8p2p8`` or ``Database/jsonObject(_:)-5iswr``,
-/// JSON values are parsed and interpreted as JSON, not as plain strings.
+/// When used in a JSON-building function such as ``Database/jsonArray(_:)-8p2p8`` or
+/// ``Database/jsonObject(_:)-5iswr``, JSON values are parsed and interpreted as JSON, not as plain
+/// strings.
 ///
-/// In the example below, we can see how the `JSONColumn` is interpreted as
-/// JSON, while the `Column` with the same name is interpreted as a
-/// plain string:
+/// In the example below, we can see how the `JSONColumn` is interpreted as JSON, while the `Column`
+/// with the same name is interpreted as a plain string:
 ///
 /// ```swift
 /// let elements: [any SQLExpressible] = [
@@ -101,27 +99,24 @@
 /// ### Supporting Types
 ///
 /// - ``AnySQLJSONExpressible``
-public protocol SQLJSONExpressible: SQLSpecificExpressible { }
+public protocol SQLJSONExpressible: SQLSpecificExpressible {}
 
-extension ColumnExpression where Self: SQLJSONExpressible {
+public extension ColumnExpression where Self: SQLJSONExpressible {
     /// Returns an SQL column that is interpreted as a JSON value.
-    public var sqlExpression: SQLExpression {
-        .column(name).withPreferredJSONInterpretation(.jsonValue)
-    }
+    var sqlExpression: SQLExpression { .column(name).withPreferredJSONInterpretation(.jsonValue) }
 }
 
-// This type only grants access to `SQLJSONExpressible` apis. The fact that
-// it is a JSON value is embedded in its
-// `sqlExpression.preferredJSONInterpretation`.
+// This type only grants access to `SQLJSONExpressible` apis. The fact that it is a JSON value is
+// embedded in its `sqlExpression.preferredJSONInterpretation`.
 /// A type-erased ``SQLJSONExpressible``.
 public struct AnySQLJSONExpressible: SQLJSONExpressible {
     /// An SQL expression that is interpreted as a JSON value.
     public let sqlExpression: SQLExpression
-    
+
     public init(_ base: some SQLJSONExpressible) {
         self.init(sqlExpression: base.sqlExpression)
     }
-    
+
     /// - Precondition: `sqlExpression` is a JSON value
     init(sqlExpression: SQLExpression) {
         assert(sqlExpression.preferredJSONInterpretation == .jsonValue)
@@ -129,7 +124,7 @@ public struct AnySQLJSONExpressible: SQLJSONExpressible {
     }
 }
 
-extension SQLSpecificExpressible {
+public extension SQLSpecificExpressible {
     /// Returns an expression that is interpreted as a JSON value.
     ///
     /// For example:
@@ -149,13 +144,13 @@ extension SQLSpecificExpressible {
     /// ```
     ///
     /// For more information, see ``SQLJSONExpressible``.
-    public var asJSON: AnySQLJSONExpressible {
-        AnySQLJSONExpressible(sqlExpression: sqlExpression.withPreferredJSONInterpretation(.jsonValue))
+    var asJSON: AnySQLJSONExpressible {
+        .init(sqlExpression: sqlExpression.withPreferredJSONInterpretation(.jsonValue))
     }
 }
 
 #if GRDBCUSTOMSQLITE || SQLITE_HAS_CODEC
-extension SQLJSONExpressible {
+public extension SQLJSONExpressible {
     /// The `->>` SQL operator.
     ///
     /// For example:
@@ -182,12 +177,12 @@ extension SQLJSONExpressible {
     ///
     /// Related SQL documentation: <https://www.sqlite.org/json1.html#jptr>
     ///
-    /// - parameter path: A [JSON path](https://www.sqlite.org/json1.html#path_arguments),
-    ///   or an JSON object field label, or an array index.
-    public subscript(_ path: some SQLExpressible) -> SQLExpression {
+    /// - parameter path: A [JSON path](https://www.sqlite.org/json1.html#path_arguments), or an
+    ///   JSON object field label, or an array index.
+    subscript(_ path: some SQLExpressible) -> SQLExpression {
         .binary(.jsonExtractSQL, sqlExpression, path.sqlExpression)
     }
-    
+
     /// The `JSON_EXTRACT` SQL function.
     ///
     /// For example:
@@ -215,10 +210,10 @@ extension SQLJSONExpressible {
     /// Related SQL documentation: <https://www.sqlite.org/json1.html#jex>
     ///
     /// - parameter path: A [JSON path](https://www.sqlite.org/json1.html#path_arguments).
-    public func jsonExtract(atPath path: some SQLExpressible) -> SQLExpression {
+    func jsonExtract(atPath path: some SQLExpressible) -> SQLExpression {
         Database.jsonExtract(self, atPath: path)
     }
-    
+
     /// The `JSON_EXTRACT` SQL function.
     ///
     /// For example:
@@ -239,13 +234,12 @@ extension SQLJSONExpressible {
     ///
     /// Related SQL documentation: <https://www.sqlite.org/json1.html#jex>
     ///
-    /// - parameter paths: A collection of [JSON paths](https://www.sqlite.org/json1.html#path_arguments).
-    public func jsonExtract(
+    /// - parameter paths: A collection of
+    ///   [JSON paths](https://www.sqlite.org/json1.html#path_arguments).
+    func jsonExtract(
         atPaths paths: some Collection<some SQLExpressible>
-    ) -> SQLExpression {
-        Database.jsonExtract(self, atPaths: paths)
-    }
-    
+    ) -> SQLExpression { Database.jsonExtract(self, atPaths: paths) }
+
     /// Returns a valid JSON string with the `->` SQL operator.
     ///
     /// For example:
@@ -272,14 +266,14 @@ extension SQLJSONExpressible {
     ///
     /// Related SQL documentation: <https://www.sqlite.org/json1.html#jptr>
     ///
-    /// - parameter path: A [JSON path](https://www.sqlite.org/json1.html#path_arguments),
-    ///   or an JSON object field label, or an array index.
-    public func jsonRepresentation(atPath path: some SQLExpressible) -> SQLExpression {
+    /// - parameter path: A [JSON path](https://www.sqlite.org/json1.html#path_arguments), or an
+    ///   JSON object field label, or an array index.
+    func jsonRepresentation(atPath path: some SQLExpressible) -> SQLExpression {
         .binary(.jsonExtractJSON, sqlExpression, path.sqlExpression)
     }
 }
 #else
-extension SQLJSONExpressible {
+public extension SQLJSONExpressible {
     /// The `->>` SQL operator.
     ///
     /// For example:
@@ -306,13 +300,12 @@ extension SQLJSONExpressible {
     ///
     /// Related SQL documentation: <https://www.sqlite.org/json1.html#jptr>
     ///
-    /// - parameter path: A [JSON path](https://www.sqlite.org/json1.html#path_arguments),
-    ///   or an JSON object field label, or an array index.
-    @available(iOS 16, macOS 13.2, tvOS 17, watchOS 9, *) // SQLite 3.38+
-    public subscript(_ path: some SQLExpressible) -> SQLExpression {
+    /// - parameter path: A [JSON path](https://www.sqlite.org/json1.html#path_arguments), or an
+    ///   JSON object field label, or an array index.
+    subscript(_ path: some SQLExpressible) -> SQLExpression {
         .binary(.jsonExtractSQL, sqlExpression, path.sqlExpression)
     }
-    
+
     /// The `JSON_EXTRACT` SQL function.
     ///
     /// For example:
@@ -340,11 +333,10 @@ extension SQLJSONExpressible {
     /// Related SQL documentation: <https://www.sqlite.org/json1.html#jex>
     ///
     /// - parameter path: A [JSON path](https://www.sqlite.org/json1.html#path_arguments).
-    @available(iOS 16, tvOS 17, watchOS 9, *) // SQLite 3.38+ with exceptions for macOS
-    public func jsonExtract(atPath path: some SQLExpressible) -> SQLExpression {
+    func jsonExtract(atPath path: some SQLExpressible) -> SQLExpression {
         Database.jsonExtract(self, atPath: path)
     }
-    
+
     /// The `JSON_EXTRACT` SQL function.
     ///
     /// For example:
@@ -365,14 +357,12 @@ extension SQLJSONExpressible {
     ///
     /// Related SQL documentation: <https://www.sqlite.org/json1.html#jex>
     ///
-    /// - parameter paths: A collection of [JSON paths](https://www.sqlite.org/json1.html#path_arguments).
-    @available(iOS 16, tvOS 17, watchOS 9, *) // SQLite 3.38+ with exceptions for macOS
-    public func jsonExtract(
+    /// - parameter paths: A collection of
+    ///   [JSON paths](https://www.sqlite.org/json1.html#path_arguments).
+    func jsonExtract(
         atPaths paths: some Collection<some SQLExpressible>
-    ) -> SQLExpression {
-        Database.jsonExtract(self, atPaths: paths)
-    }
-    
+    ) -> SQLExpression { Database.jsonExtract(self, atPaths: paths) }
+
     /// Returns a valid JSON string with the `->` SQL operator.
     ///
     /// For example:
@@ -399,10 +389,9 @@ extension SQLJSONExpressible {
     ///
     /// Related SQL documentation: <https://www.sqlite.org/json1.html#jptr>
     ///
-    /// - parameter path: A [JSON path](https://www.sqlite.org/json1.html#path_arguments),
-    ///   or an JSON object field label, or an array index.
-    @available(iOS 16, macOS 13.2, tvOS 17, watchOS 9, *) // SQLite 3.38+
-    public func jsonRepresentation(atPath path: some SQLExpressible) -> SQLExpression {
+    /// - parameter path: A [JSON path](https://www.sqlite.org/json1.html#path_arguments), or an
+    ///   JSON object field label, or an array index.
+    func jsonRepresentation(atPath path: some SQLExpressible) -> SQLExpression {
         .binary(.jsonExtractJSON, sqlExpression, path.sqlExpression)
     }
 }
@@ -421,14 +410,13 @@ extension SQLJSONExpressible {
 //     /// ```
 //     ///
 //     /// Related SQLite documentation: <https://www.sqlite.org/json1.html#jpatch>
-//     @available(iOS 16, tvOS 17, watchOS 9, *) // SQLite 3.38+ with exceptions for macOS
 //     public func jsonPatch(
 //         with patch: some SQLExpressible)
 //     -> ColumnAssignment
 //     {
 //         .init(columnName: name, value: Database.jsonPatch(self, with: patch))
 //     }
-// 
+//
 //     /// Updates a columns with the `JSON_REMOVE` SQL function.
 //     ///
 //     /// For example:
@@ -444,11 +432,10 @@ extension SQLJSONExpressible {
 //     ///
 //     /// - Parameters:
 //     ///   - paths: A [JSON path](https://www.sqlite.org/json1.html#path_arguments).
-//     @available(iOS 16, tvOS 17, watchOS 9, *) // SQLite 3.38+ with exceptions for macOS
 //     public func jsonRemove(atPath path: some SQLExpressible) -> ColumnAssignment {
 //         .init(columnName: name, value: Database.jsonRemove(self, atPath: path))
 //     }
-// 
+//
 //     /// Updates a columns with the `JSON_REMOVE` SQL function.
 //     ///
 //     /// For example:
@@ -464,12 +451,11 @@ extension SQLJSONExpressible {
 //     ///
 //     /// - Parameters:
 //     ///   - paths: A collection of [JSON paths](https://www.sqlite.org/json1.html#path_arguments).
-//     @available(iOS 16, tvOS 17, watchOS 9, *) // SQLite 3.38+ with exceptions for macOS
 //     public func jsonRemove(
 //         atPaths paths: some Collection<some SQLExpressible>
 //     ) -> ColumnAssignment {
 //         .init(columnName: name, value: Database.jsonRemove(self, atPaths: paths))
 //     }
-// 
+//
 // }
 #endif

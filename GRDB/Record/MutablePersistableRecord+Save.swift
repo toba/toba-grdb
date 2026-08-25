@@ -1,81 +1,72 @@
 // MARK: - Save Callbacks
 
-extension MutablePersistableRecord {
+public extension MutablePersistableRecord {
     @inline(__always)
     @inlinable
-    public func willSave(_ db: Database) throws { }
-    
+    func willSave(_: Database) throws {}
+
     @inline(__always)
     @inlinable
-    public func aroundSave(_ db: Database, save: () throws -> PersistenceSuccess) throws {
-        _ = try save()
-    }
-    
+    func aroundSave(_: Database, save: () throws -> PersistenceSuccess) throws { _ = try save() }
+
     @inline(__always)
     @inlinable
-    public func didSave(_ saved: PersistenceSuccess) { }
+    func didSave(_: PersistenceSuccess) {}
 }
 
 // MARK: - Save
 
-extension MutablePersistableRecord {
+public extension MutablePersistableRecord {
     /// Executes an `INSERT` or `UPDATE` statement.
     ///
-    /// If the receiver has a non-nil primary key and a matching row in the
-    /// database, this method performs an update.
+    /// If the receiver has a non-nil primary key and a matching row in the database, this method
+    /// performs an update.
     ///
     /// Otherwise, performs an insert.
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
-    @inlinable // allow specialization so that empty callbacks are removed
-    public mutating func save(
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
+    @inlinable  // allow specialization so that empty callbacks are removed
+    mutating func save(
         _ db: Database,
-        onConflict conflictResolution: Database.ConflictResolution? = nil)
-    throws
+        onConflict conflictResolution: Database.ConflictResolution? = nil
+    )
+        throws
     {
         try willSave(db)
-        
+
         var saved: PersistenceSuccess?
         try aroundSave(db) {
             saved = try updateOrInsertWithCallbacks(db, onConflict: conflictResolution)
             return saved!
         }
-        
-        guard let saved else {
-            try persistenceCallbackMisuse("aroundSave")
-        }
+
+        guard let saved else { try persistenceCallbackMisuse("aroundSave") }
         didSave(saved)
     }
-    
-    /// Executes an `INSERT` or `UPDATE` statement, and returns the
-    /// saved record.
+
+    /// Executes an `INSERT` or `UPDATE` statement, and returns the saved record.
     ///
     /// Usage:
     ///
-    ///     let player = Player(id: nil, name: "Arthur")
-    ///     let savedPlayer = try dbQueue.write { db in
-    ///         try player.saved(db)
-    ///     }
-    ///     print(player.id)      // nil
-    ///     print(savedPlayer.id) // some id
+    /// let player = Player(id: nil, name: "Arthur") let savedPlayer = try dbQueue.write { db in try
+    /// player.saved(db) } print(player.id) // nil print(savedPlayer.id) // some id
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
     /// - returns: The saved record.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
-    @inlinable // allow specialization so that empty callbacks are removed
-    public func saved(
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
+    @inlinable  // allow specialization so that empty callbacks are removed
+    func saved(
         _ db: Database,
-        onConflict conflictResolution: Database.ConflictResolution? = nil)
-    throws -> Self
+        onConflict conflictResolution: Database.ConflictResolution? = nil
+    )
+        throws -> Self
     {
         var result = self
         try result.save(db, onConflict: conflictResolution)
@@ -86,68 +77,64 @@ extension MutablePersistableRecord {
 // MARK: - Save and Fetch
 
 extension MutablePersistableRecord {
-#if GRDBCUSTOMSQLITE || SQLITE_HAS_CODEC
-    /// Executes an `INSERT RETURNING` or `UPDATE RETURNING` statement, and
-    /// returns a new record built from the saved row.
+    #if GRDBCUSTOMSQLITE || SQLITE_HAS_CODEC
+    /// Executes an `INSERT RETURNING` or `UPDATE RETURNING` statement, and returns a new record
+    /// built from the saved row.
     ///
-    /// If the receiver has a non-nil primary key and a matching row in the
-    /// database, this method performs an update. Otherwise, it performs
-    /// an insert.
+    /// If the receiver has a non-nil primary key and a matching row in the database, this method
+    /// performs an update. Otherwise, it performs an insert.
     ///
-    /// This method helps dealing with default column values and
-    /// generated columns.
+    /// This method helps dealing with default column values and generated columns.
     ///
     /// For example:
     ///
-    ///     let player: Player = ...
-    ///     let savedPlayer = player.saveAndFetch(db)
+    /// let player: Player = ... let savedPlayer = player.saveAndFetch(db)
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
     /// - returns: The saved record.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
-    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be
-    ///   thrown if the database changes fail due to the IGNORE conflict policy.
-    @inlinable // allow specialization so that empty callbacks are removed
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
+    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be thrown if the database
+    ///   changes fail due to the IGNORE conflict policy.
+    @inlinable  // allow specialization so that empty callbacks are removed
     public func saveAndFetch(
         _ db: Database,
-        onConflict conflictResolution: Database.ConflictResolution? = nil)
-    throws -> Self
-    where Self: FetchableRecord
+        onConflict conflictResolution: Database.ConflictResolution? = nil
+    )
+        throws -> Self
+        where Self: FetchableRecord
     {
         var result = self
         return try result.saveAndFetch(db, onConflict: conflictResolution, as: Self.self)
     }
-    
-    /// Executes an `INSERT RETURNING` or `UPDATE RETURNING` statement, and
-    /// returns a new record built from the saved row.
+
+    /// Executes an `INSERT RETURNING` or `UPDATE RETURNING` statement, and returns a new record
+    /// built from the saved row.
     ///
-    /// If the receiver has a non-nil primary key and a matching row in the
-    /// database, this method performs an update. Otherwise, it performs
-    /// an insert.
+    /// If the receiver has a non-nil primary key and a matching row in the database, this method
+    /// performs an update. Otherwise, it performs an insert.
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
     /// - parameter returnedType: The type of the returned record.
     /// - returns: A record of type `returnedType`.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
-    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be
-    ///   thrown if the database changes fail due to the IGNORE conflict policy.
-    @inlinable // allow specialization so that empty callbacks are removed
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
+    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be thrown if the database
+    ///   changes fail due to the IGNORE conflict policy.
+    @inlinable  // allow specialization so that empty callbacks are removed
     public mutating func saveAndFetch<T: FetchableRecord & TableRecord>(
         _ db: Database,
         onConflict conflictResolution: Database.ConflictResolution? = nil,
-        as returnedType: T.Type)
-    throws -> T
+        as _: T.Type
+    )
+        throws -> T
     {
         try willSave(db)
-        
+
         var success: (saved: PersistenceSuccess, returned: T)?
         try aroundSave(db) {
             let record = self
@@ -155,50 +142,45 @@ extension MutablePersistableRecord {
                 db, onConflict: conflictResolution,
                 selection: T.databaseSelection,
                 fetch: {
-                    if let result = try T.fetchOne($0) {
-                        return result
-                    }
+                    if let result = try T.fetchOne($0) { return result }
                     throw record.recordNotFound(db)
                 })
             return success!.saved
         }
-        
-        guard let success else {
-            try persistenceCallbackMisuse("aroundSave")
-        }
+
+        guard let success else { try persistenceCallbackMisuse("aroundSave") }
         didSave(success.saved)
         return success.returned
     }
-    
-    /// Executes an `INSERT RETURNING` or `UPDATE RETURNING` statement, and
-    /// returns the selected columns from the saved row.
+
+    /// Executes an `INSERT RETURNING` or `UPDATE RETURNING` statement, and returns the selected
+    /// columns from the saved row.
     ///
-    /// If the receiver has a non-nil primary key and a matching row in the
-    /// database, this method performs an update. Otherwise, it performs
-    /// an insert.
+    /// If the receiver has a non-nil primary key and a matching row in the database, this method
+    /// performs an update. Otherwise, it performs an insert.
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
     /// - parameter selection: The returned columns (must not be empty).
     /// - parameter fetch: A function that executes it ``Statement`` argument.
     /// - returns: The result of the `fetch` function.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
     /// - precondition: `selection` is not empty.
-    @inlinable // allow specialization so that empty callbacks are removed
+    @inlinable  // allow specialization so that empty callbacks are removed
     public mutating func saveAndFetch<T>(
         _ db: Database,
         onConflict conflictResolution: Database.ConflictResolution? = nil,
         selection: [any SQLSelectable],
-        fetch: (Statement) throws -> T)
-    throws -> T
+        fetch: (Statement) throws -> T
+    )
+        throws -> T
     {
         GRDBPrecondition(!selection.isEmpty, "Invalid empty selection")
-        
+
         try willSave(db)
-        
+
         var success: (saved: PersistenceSuccess, returned: T)?
         try aroundSave(db) {
             success = try updateOrInsertAndFetchWithCallbacks(
@@ -207,77 +189,69 @@ extension MutablePersistableRecord {
                 fetch: fetch)
             return success!.saved
         }
-        
-        guard let success else {
-            try persistenceCallbackMisuse("aroundSave")
-        }
+
+        guard let success else { try persistenceCallbackMisuse("aroundSave") }
         didSave(success.saved)
         return success.returned
     }
-#else
-    /// Executes an `INSERT RETURNING` or `UPDATE RETURNING` statement, and
-    /// returns a new record built from the saved row.
+    #else
+    /// Executes an `INSERT RETURNING` or `UPDATE RETURNING` statement, and returns a new record
+    /// built from the saved row.
     ///
-    /// If the receiver has a non-nil primary key and a matching row in the
-    /// database, this method performs an update. Otherwise, it performs
-    /// an insert.
+    /// If the receiver has a non-nil primary key and a matching row in the database, this method
+    /// performs an update. Otherwise, it performs an insert.
     ///
-    /// This method helps dealing with default column values and
-    /// generated columns.
+    /// This method helps dealing with default column values and generated columns.
     ///
     /// For example:
     ///
-    ///     let player: Player = ...
-    ///     let savedPlayer = player.saveAndFetch(db)
+    /// let player: Player = ... let savedPlayer = player.saveAndFetch(db)
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
     /// - returns: The saved record.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
-    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be
-    ///   thrown if the database changes fail due to the IGNORE conflict policy.
-    @inlinable // allow specialization so that empty callbacks are removed
-    @available(iOS 15, macOS 12, tvOS 15, watchOS 8, *) // SQLite 3.35.0+
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
+    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be thrown if the database
+    ///   changes fail due to the IGNORE conflict policy.
+    @inlinable  // allow specialization so that empty callbacks are removed
     public func saveAndFetch(
         _ db: Database,
-        onConflict conflictResolution: Database.ConflictResolution? = nil)
-    throws -> Self
-    where Self: FetchableRecord
+        onConflict conflictResolution: Database.ConflictResolution? = nil
+    )
+        throws -> Self
+        where Self: FetchableRecord
     {
         var result = self
         return try result.saveAndFetch(db, onConflict: conflictResolution, as: Self.self)
     }
-    
-    /// Executes an `INSERT RETURNING` or `UPDATE RETURNING` statement, and
-    /// returns a new record built from the saved row.
+
+    /// Executes an `INSERT RETURNING` or `UPDATE RETURNING` statement, and returns a new record
+    /// built from the saved row.
     ///
-    /// If the receiver has a non-nil primary key and a matching row in the
-    /// database, this method performs an update. Otherwise, it performs
-    /// an insert.
+    /// If the receiver has a non-nil primary key and a matching row in the database, this method
+    /// performs an update. Otherwise, it performs an insert.
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
     /// - parameter returnedType: The type of the returned record.
     /// - returns: A record of type `returnedType`.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
-    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be
-    ///   thrown if the database changes fail due to the IGNORE conflict policy.
-    @inlinable // allow specialization so that empty callbacks are removed
-    @available(iOS 15, macOS 12, tvOS 15, watchOS 8, *) // SQLite 3.35.0+
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
+    ///   ``RecordError/recordNotFound(databaseTableName:key:)`` can be thrown if the database
+    ///   changes fail due to the IGNORE conflict policy.
+    @inlinable  // allow specialization so that empty callbacks are removed
     public mutating func saveAndFetch<T: FetchableRecord & TableRecord>(
         _ db: Database,
         onConflict conflictResolution: Database.ConflictResolution? = nil,
-        as returnedType: T.Type)
-    throws -> T
+        as _: T.Type
+    )
+        throws -> T
     {
         try willSave(db)
-        
+
         var success: (saved: PersistenceSuccess, returned: T)?
         try aroundSave(db) {
             let record = self
@@ -285,51 +259,45 @@ extension MutablePersistableRecord {
                 db, onConflict: conflictResolution,
                 selection: T.databaseSelection,
                 fetch: {
-                    if let result = try T.fetchOne($0) {
-                        return result
-                    }
+                    if let result = try T.fetchOne($0) { return result }
                     throw record.recordNotFound(db)
                 })
             return success!.saved
         }
-        
-        guard let success else {
-            try persistenceCallbackMisuse("aroundSave")
-        }
+
+        guard let success else { try persistenceCallbackMisuse("aroundSave") }
         didSave(success.saved)
         return success.returned
     }
-    
-    /// Executes an `INSERT RETURNING` or `UPDATE RETURNING` statement, and
-    /// returns the selected columns from the saved row.
+
+    /// Executes an `INSERT RETURNING` or `UPDATE RETURNING` statement, and returns the selected
+    /// columns from the saved row.
     ///
-    /// If the receiver has a non-nil primary key and a matching row in the
-    /// database, this method performs an update. Otherwise, it performs
-    /// an insert.
+    /// If the receiver has a non-nil primary key and a matching row in the database, this method
+    /// performs an update. Otherwise, it performs an insert.
     ///
     /// - parameter db: A database connection.
-    /// - parameter conflictResolution: A policy for conflict resolution. If
-    ///   nil, <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv>
-    ///   is used.
+    /// - parameter conflictResolution: A policy for conflict resolution. If nil,
+    ///   <doc:/MutablePersistableRecord/persistenceConflictPolicy-1isyv> is used.
     /// - parameter selection: The returned columns (must not be empty).
     /// - parameter fetch: A function that executes it ``Statement`` argument.
     /// - returns: The result of the `fetch` function.
-    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any
-    ///   error thrown by the persistence callbacks defined by the record type.
+    /// - throws: A ``DatabaseError`` whenever an SQLite error occurs, or any error thrown by the
+    ///   persistence callbacks defined by the record type.
     /// - precondition: `selection` is not empty.
-    @inlinable // allow specialization so that empty callbacks are removed
-    @available(iOS 15, macOS 12, tvOS 15, watchOS 8, *) // SQLite 3.35.0+
+    @inlinable  // allow specialization so that empty callbacks are removed
     public mutating func saveAndFetch<T>(
         _ db: Database,
         onConflict conflictResolution: Database.ConflictResolution? = nil,
         selection: [any SQLSelectable],
-        fetch: (Statement) throws -> T)
-    throws -> T
+        fetch: (Statement) throws -> T
+    )
+        throws -> T
     {
         GRDBPrecondition(!selection.isEmpty, "Invalid empty selection")
-        
+
         try willSave(db)
-        
+
         var success: (saved: PersistenceSuccess, returned: T)?
         try aroundSave(db) {
             success = try updateOrInsertAndFetchWithCallbacks(
@@ -338,26 +306,24 @@ extension MutablePersistableRecord {
                 fetch: fetch)
             return success!.saved
         }
-        
-        guard let success else {
-            try persistenceCallbackMisuse("aroundSave")
-        }
+
+        guard let success else { try persistenceCallbackMisuse("aroundSave") }
         didSave(success.saved)
         return success.returned
     }
-#endif
+    #endif
 }
 
 // MARK: - Internal
 
 extension MutablePersistableRecord {
-    /// Executes an `UPDATE` or `INSERT` statement, and runs insertion or
-    /// update callbacks.
-    @inlinable // allow specialization so that empty callbacks are removed
+    /// Executes an `UPDATE` or `INSERT` statement, and runs insertion or update callbacks.
+    @inlinable  // allow specialization so that empty callbacks are removed
     mutating func updateOrInsertWithCallbacks(
         _ db: Database,
-        onConflict conflictResolution: Database.ConflictResolution?)
-    throws -> PersistenceSuccess
+        onConflict conflictResolution: Database.ConflictResolution?
+    )
+        throws -> PersistenceSuccess
     {
         let (saved, _) = try updateOrInsertAndFetchWithCallbacks(
             db, onConflict: conflictResolution,
@@ -368,20 +334,23 @@ extension MutablePersistableRecord {
             })
         return saved
     }
-    
-    /// Executes an `UPDATE` or `INSERT` statement, with `RETURNING` clause
-    /// if `selection` is not empty, and runs insertion or update callbacks.
-    @inlinable // allow specialization so that empty callbacks are removed
+
+    /// Executes an `UPDATE` or `INSERT` statement, with `RETURNING` clause if `selection` is not
+    /// empty, and runs insertion or update callbacks.
+    @inlinable  // allow specialization so that empty callbacks are removed
     mutating func updateOrInsertAndFetchWithCallbacks<T>(
         _ db: Database,
         onConflict conflictResolution: Database.ConflictResolution?,
         selection: [any SQLSelectable],
-        fetch: (Statement) throws -> T)
-    throws -> (PersistenceSuccess, T)
+        fetch: (Statement) throws -> T
+    )
+        throws -> (PersistenceSuccess, T)
     {
         // Attempt at updating if the record has a primary key
         if let key = try primaryKey(db) {
+            // sm:ignore:next useSelfNotTypeName Self binds to the conforming type, not the subclass
             let databaseTableName = type(of: self).databaseTableName
+
             do {
                 let columns = try Set(db.columns(in: databaseTableName).map(\.name))
                 return try updateAndFetchWithCallbacks(
@@ -393,7 +362,7 @@ extension MutablePersistableRecord {
                 // No row was updated: fallback on insert.
             }
         }
-        
+
         // Insert
         let (inserted, returned) = try insertAndFetchWithCallbacks(
             db, onConflict: conflictResolution,
@@ -401,19 +370,17 @@ extension MutablePersistableRecord {
             fetch: fetch)
         return (PersistenceSuccess(inserted), returned)
     }
-    
+
     /// Return a non-nil dictionary if record has a non-null primary key
     @usableFromInline
     func primaryKey(_ db: Database) throws -> [String: DatabaseValue]? {
+        // sm:ignore:next useSelfNotTypeName Self binds to the conforming type, not the subclass
         let databaseTableName = type(of: self).databaseTableName
         let primaryKeyInfo = try db.primaryKey(databaseTableName)
         let container = try PersistenceContainer(db, self)
         let primaryKey = Dictionary(uniqueKeysWithValues: primaryKeyInfo.columns.map {
             ($0, container.databaseValue(at: $0))
         })
-        if primaryKey.allSatisfy({ $0.value.isNull }) {
-            return nil
-        }
-        return primaryKey
+        return primaryKey.allSatisfy { $0.value.isNull } ? nil : primaryKey
     }
 }

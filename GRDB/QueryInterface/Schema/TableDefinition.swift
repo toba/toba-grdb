@@ -1,34 +1,33 @@
 /// Table creation options.
 public struct TableOptions: OptionSet, Sendable {
     public let rawValue: Int
-    
+
     public init(rawValue: Int) { self.rawValue = rawValue }
-    
+
     /// Only creates the table if it does not already exist.
     public static let ifNotExists = TableOptions(rawValue: 1 << 0)
-    
+
     /// Creates a temporary table.
     public static let temporary = TableOptions(rawValue: 1 << 1)
-    
+
     /// Creates a [`WITHOUT ROWID`](https://www.sqlite.org/withoutrowid.html) table.
     ///
     /// Such tables can not be tracked with <doc:DatabaseObservation> tools.
     public static let withoutRowID = TableOptions(rawValue: 1 << 2)
-    
-#if GRDBCUSTOMSQLITE || SQLITE_HAS_CODEC
+
+    #if GRDBCUSTOMSQLITE || SQLITE_HAS_CODEC
     /// Creates a [STRICT](https://www.sqlite.org/stricttables.html) table.
     public static let strict = TableOptions(rawValue: 1 << 3)
-#else
+    #else
     /// Creates a [STRICT](https://www.sqlite.org/stricttables.html) table.
-    @available(iOS 15.4, macOS 12.4, tvOS 15.4, watchOS 8.5, *) // SQLite 3.37+
     public static let strict = TableOptions(rawValue: 1 << 3)
-#endif
+    #endif
 }
 
 /// A `TableDefinition` lets you define the components of a database table.
 ///
-/// See the documentation of the `Database`
-/// ``Database/create(table:options:body:)`` method for usage information:
+/// See the documentation of the `Database` ``Database/create(table:options:body:)`` method for
+/// usage information:
 ///
 /// ```swift
 /// try db.create(table: "player") { t in // t is TableDefinition
@@ -79,27 +78,25 @@ public final class TableDefinition {
         }
         var components: [Component]
         var conflictResolution: Database.ConflictResolution?
-        
+
         init(components: [Component], conflictResolution: Database.ConflictResolution?) {
             self.components = components
             self.conflictResolution = conflictResolution
         }
-        
+
         init(columns: [String], conflictResolution: Database.ConflictResolution?) {
-            let components = columns.map { name in
-                Component.columnName(name)
-            }
+            let components = columns.map { name in Component.columnName(name) }
             self.init(components: components, conflictResolution: conflictResolution)
         }
     }
-    
+
     enum ColumnComponent {
         case columnDefinition(ColumnDefinition)
         case columnLiteral(SQL)
         case foreignKeyDefinition(ForeignKeyDefinition)
         case foreignKeyConstraint(SQLForeignKeyConstraint)
     }
-    
+
     let name: String
     let options: TableOptions
     var columnComponents: [ColumnComponent] = []
@@ -108,12 +105,12 @@ public final class TableDefinition {
     var uniqueKeyConstraints: [KeyConstraint] = []
     var checkConstraints: [SQLExpression] = []
     var literalConstraints: [SQL] = []
-    
+
     init(name: String, options: TableOptions) {
         self.name = name
         self.options = options
     }
-    
+
     /// Appends an auto-incremented primary key column.
     ///
     /// For example:
@@ -127,28 +124,26 @@ public final class TableDefinition {
     /// }
     /// ```
     ///
-    /// The auto-incremented primary key is an integer primary key that
-    /// automatically generates unused values when you do not explicitly
-    /// provide one, and prevents the reuse of ids over the lifetime of
-    /// the database.
+    /// The auto-incremented primary key is an integer primary key that automatically generates
+    /// unused values when you do not explicitly provide one, and prevents the reuse of ids over the
+    /// lifetime of the database.
     ///
     /// Related SQLite documentation:
     /// - <https://www.sqlite.org/lang_createtable.html#primkeyconst>
     /// - <https://www.sqlite.org/lang_createtable.html#rowid>
     ///
     /// - parameter name: the name of the primary key.
-    /// - parameter conflictResolution: An optional conflict resolution
-    ///   (see <https://www.sqlite.org/lang_conflict.html>).
+    /// - parameter conflictResolution: An optional conflict resolution (see
+    ///   <https://www.sqlite.org/lang_conflict.html>).
     /// - returns: `self` so that you can further refine the column definition.
     @discardableResult
     public func autoIncrementedPrimaryKey(
         _ name: String,
-        onConflict conflictResolution: Database.ConflictResolution? = nil)
-    -> ColumnDefinition
-    {
+        onConflict conflictResolution: Database.ConflictResolution? = nil
+    ) -> ColumnDefinition {
         column(name, .integer).primaryKey(onConflict: conflictResolution, autoincrement: true)
     }
-    
+
     /// Appends a primary key column.
     ///
     /// For example:
@@ -164,28 +159,19 @@ public final class TableDefinition {
     ///
     /// - parameter name: the column name.
     /// - parameter type: the column type.
-    /// - parameter conflictResolution: An optional conflict resolution
-    ///   (see <https://www.sqlite.org/lang_conflict.html>).
-    /// - returns: A ``ColumnDefinition`` that allows you to refine the
-    ///   column definition.
+    /// - parameter conflictResolution: An optional conflict resolution (see
+    ///   <https://www.sqlite.org/lang_conflict.html>).
+    /// - returns: A ``ColumnDefinition`` that allows you to refine the column definition.
     @discardableResult
     public func primaryKey(
         _ name: String,
         _ type: Database.ColumnType,
-        onConflict conflictResolution: Database.ConflictResolution? = nil)
-    -> ColumnDefinition
-    {
+        onConflict conflictResolution: Database.ConflictResolution? = nil
+    ) -> ColumnDefinition {
         let pk = column(name, type).primaryKey(onConflict: conflictResolution)
-        if type == .integer {
-            // INTEGER PRIMARY KEY is always NOT NULL
-            return pk
-        } else {
-            // Add a not null constraint in order to fix an SQLite bug:
-            // <https://www.sqlite.org/quirks.html#primary_keys_can_sometimes_contain_nulls>
-            return pk.notNull()
-        }
+        return type == .integer ? pk : pk.notNull()
     }
-    
+
     /// Defines the primary key on wrapped columns.
     ///
     /// For example:
@@ -209,21 +195,22 @@ public final class TableDefinition {
     /// A NOT NULL constraint is always added to the wrapped primary key columns.
     public func primaryKey(
         onConflict conflictResolution: Database.ConflictResolution? = nil,
-        body: () throws -> Void)
-    rethrows
+        body: () throws -> Void
+    )
+        rethrows
     {
         guard primaryKeyConstraint == nil else {
             // Programmer error
             fatalError("can't define several primary keys")
         }
         primaryKeyConstraint = KeyConstraint(components: [], conflictResolution: conflictResolution)
-        
+
         let oldValue = inPrimaryKeyBody
         inPrimaryKeyBody = true
         defer { inPrimaryKeyBody = oldValue }
         try body()
     }
-    
+
     /// Appends a table column.
     ///
     /// For example:
@@ -241,23 +228,22 @@ public final class TableDefinition {
     ///
     /// - parameter name: the column name.
     /// - parameter type: the eventual column type.
-    /// - returns: A ``ColumnDefinition`` that allows you to refine the
-    ///   column definition.
+    /// - returns: A ``ColumnDefinition`` that allows you to refine the column definition.
     @discardableResult
     public func column(_ name: String, _ type: Database.ColumnType? = nil) -> ColumnDefinition {
         let column = ColumnDefinition(name: name, type: type)
         columnComponents.append(.columnDefinition(column))
-        
+
         if inPrimaryKeyBody {
             // Add a not null constraint in order to fix an SQLite bug:
             // <https://www.sqlite.org/quirks.html#primary_keys_can_sometimes_contain_nulls>
             column.notNull()
             primaryKeyConstraint!.components.append(.columnDefinition(column))
         }
-        
+
         return column
     }
-    
+
     /// Appends a table column.
     ///
     /// For example:
@@ -270,14 +256,12 @@ public final class TableDefinition {
     ///     t.column(sql: "name TEXT")
     /// }
     /// ```
-    public func column(sql: String) {
-        column(literal: SQL(sql: sql))
-    }
-    
+    public func column(sql: String) { column(literal: SQL(sql: sql)) }
+
     /// Appends a table column.
     ///
-    /// ``SQL`` literals allow you to safely embed raw values in your SQL,
-    /// without any risk of syntax errors or SQL injection:
+    /// ``SQL`` literals allow you to safely embed raw values in your SQL, without any risk of
+    /// syntax errors or SQL injection:
     ///
     /// ```swift
     /// // CREATE TABLE player (
@@ -292,7 +276,7 @@ public final class TableDefinition {
         GRDBPrecondition(!inPrimaryKeyBody, "Primary key columns can not be defined with raw SQL")
         columnComponents.append(.columnLiteral(literal))
     }
-    
+
     /// Adds a primary key constraint.
     ///
     /// For example:
@@ -310,22 +294,26 @@ public final class TableDefinition {
     /// }
     /// ```
     ///
-    /// - important: Make sure you add not null constraints on your primary key
-    ///   columns, as in the above example, or SQLite will allow null values.
-    ///   See <https://www.sqlite.org/quirks.html#primary_keys_can_sometimes_contain_nulls>
-    ///   for more information.
+    /// - important: Make sure you add not null constraints on your primary key columns, as in the
+    ///   above example, or SQLite will allow null values. See
+    ///   <https://www.sqlite.org/quirks.html#primary_keys_can_sometimes_contain_nulls> for more
+    ///   information.
     ///
     /// - parameter columns: The primary key columns.
-    /// - parameter conflictResolution: An optional conflict resolution
-    ///   (see <https://www.sqlite.org/lang_conflict.html>).
-    public func primaryKey(_ columns: [String], onConflict conflictResolution: Database.ConflictResolution? = nil) {
+    /// - parameter conflictResolution: An optional conflict resolution (see
+    ///   <https://www.sqlite.org/lang_conflict.html>).
+    public func primaryKey(
+        _ columns: [String],
+        onConflict conflictResolution: Database.ConflictResolution? = nil
+    ) {
         guard primaryKeyConstraint == nil else {
             // Programmer error
             fatalError("can't define several primary keys")
         }
-        primaryKeyConstraint = KeyConstraint(columns: columns, conflictResolution: conflictResolution)
+        primaryKeyConstraint = KeyConstraint(
+            columns: columns, conflictResolution: conflictResolution)
     }
-    
+
     /// Adds a unique constraint.
     ///
     /// For example:
@@ -358,12 +346,16 @@ public final class TableDefinition {
     /// Related SQLite documentation: <https://www.sqlite.org/lang_createtable.html#uniqueconst>
     ///
     /// - parameter columns: The unique key columns.
-    /// - parameter conflictResolution: An optional conflict resolution
-    ///   (see <https://www.sqlite.org/lang_conflict.html>).
-    public func uniqueKey(_ columns: [String], onConflict conflictResolution: Database.ConflictResolution? = nil) {
-        uniqueKeyConstraints.append(KeyConstraint(columns: columns, conflictResolution: conflictResolution))
+    /// - parameter conflictResolution: An optional conflict resolution (see
+    ///   <https://www.sqlite.org/lang_conflict.html>).
+    public func uniqueKey(
+        _ columns: [String],
+        onConflict conflictResolution: Database.ConflictResolution? = nil
+    ) {
+        uniqueKeyConstraints.append(KeyConstraint(
+            columns: columns, conflictResolution: conflictResolution))
     }
-    
+
     /// Adds a foreign key.
     ///
     /// For example:
@@ -386,8 +378,7 @@ public final class TableDefinition {
     /// ```
     ///
     /// When defining a foreign key on a single column, you can use the
-    /// ``ColumnDefinition/references(_:column:onDelete:onUpdate:deferred:)``
-    /// shortcut:
+    /// ``ColumnDefinition/references(_:column:onDelete:onUpdate:deferred:)`` shortcut:
     ///
     /// ```swift
     /// try db.create(table: "player") { t in
@@ -397,25 +388,20 @@ public final class TableDefinition {
     ///
     /// Related SQLite documentation: <https://www.sqlite.org/foreignkeys.html>
     ///
-    /// - parameters:
-    ///     - columns: The foreign key columns.
-    ///     - table: The referenced table.
-    ///     - destinationColumns: The columns in the referenced table. If not
-    ///       specified, the columns of the primary key of the referenced table
-    ///       are used.
-    ///     - deleteAction: Optional action when the referenced row is deleted.
-    ///     - updateAction: Optional action when the referenced row is updated.
-    ///     - isDeferred: A boolean value indicating whether the foreign key
-    ///       constraint is deferred.
-    ///       See <https://www.sqlite.org/foreignkeys.html#fk_deferred>.
+    /// - parameters: - columns: The foreign key columns. - table: The referenced table. -
+    ///   destinationColumns: The columns in the referenced table. If not specified, the columns of
+    ///   the primary key of the referenced table are used. - deleteAction: Optional action when the
+    ///   referenced row is deleted. - updateAction: Optional action when the referenced row is
+    ///   updated. - isDeferred: A boolean value indicating whether the foreign key constraint is
+    ///   deferred. See <https://www.sqlite.org/foreignkeys.html#fk_deferred>.
     public func foreignKey(
         _ columns: [String],
         references table: String,
         columns destinationColumns: [String]? = nil,
         onDelete deleteAction: Database.ForeignKeyAction? = nil,
         onUpdate updateAction: Database.ForeignKeyAction? = nil,
-        deferred isDeferred: Bool = false)
-    {
+        deferred isDeferred: Bool = false
+    ) {
         let foreignKeyConstraint = SQLForeignKeyConstraint(
             columns: columns,
             destinationTable: table,
@@ -425,19 +411,17 @@ public final class TableDefinition {
             isDeferred: isDeferred)
         columnComponents.append(.foreignKeyConstraint(foreignKeyConstraint))
     }
-    
+
     /// Declares an association to another table.
     ///
-    /// `belongsTo` appends as many columns as there are columns in the
-    /// primary key of the referenced table, and declares a foreign key that
-    /// guarantees schema integrity. All primary keys are supported,
-    /// including composite primary keys that span several columns, and the
+    /// `belongsTo` appends as many columns as there are columns in the primary key of the
+    /// referenced table, and declares a foreign key that guarantees schema integrity. All primary
+    /// keys are supported, including composite primary keys that span several columns, and the
     /// hidden `rowid` column.
     ///
-    /// Added columns are prefixed with `name`, and end with the name of the
-    /// matching column in the primary key of the referenced table. In the
-    /// following example, `belongsTo("team")` adds a `teamId` column, and
-    /// `belongsTo("country")` adds a `countryCode` column:
+    /// Added columns are prefixed with `name`, and end with the name of the matching column in the
+    /// primary key of the referenced table. In the following example, `belongsTo("team")` adds a
+    /// `teamId` column, and `belongsTo("country")` adds a `countryCode` column:
     ///
     /// ```swift
     /// try db.create(table: "team") { t in
@@ -486,8 +470,7 @@ public final class TableDefinition {
     /// }
     /// ```
     ///
-    /// When the added columns should have a custom prefix, specify an
-    /// explicit table name:
+    /// When the added columns should have a custom prefix, specify an explicit table name:
     ///
     /// ```swift
     /// // CREATE TABLE player (
@@ -522,9 +505,9 @@ public final class TableDefinition {
     /// }
     /// ```
     ///
-    /// The added columns are indexed by default. You can disable this
-    /// automatic index with the `indexed: false` option. You can also make
-    /// this index unique with ``ForeignKeyDefinition/unique()``:
+    /// The added columns are indexed by default. You can disable this automatic index with the
+    /// `indexed: false` option. You can also make this index unique with
+    /// ``ForeignKeyDefinition/unique()``:
     ///
     /// ```swift
     /// try db.create(table: "player") { t in
@@ -537,9 +520,9 @@ public final class TableDefinition {
     /// ```
     ///
     /// For more precision in the definition of foreign keys, use instead
-    /// ``ColumnDefinition/references(_:column:onDelete:onUpdate:deferred:)``
-    /// or ``TableDefinition/foreignKey(_:references:columns:onDelete:onUpdate:deferred:)``.
-    /// For example:
+    /// ``ColumnDefinition/references(_:column:onDelete:onUpdate:deferred:)`` or
+    /// ``TableDefinition/foreignKey(_:references:columns:onDelete:onUpdate:deferred:)``. For
+    /// example:
     ///
     /// ```swift
     /// try db.create(table: "player") { t in
@@ -557,25 +540,18 @@ public final class TableDefinition {
     /// }
     /// ```
     ///
-    /// See [Associations](https://github.com/groue/GRDB.swift/blob/master/Documentation/AssociationsBasics.md)
+    /// See
+    /// [Associations](https://github.com/groue/GRDB.swift/blob/master/Documentation/AssociationsBasics.md)
     /// for more information about foreign keys and associations.
     ///
-    /// - parameters:
-    ///     - name: The name of the foreign key, used as a prefix for the
-    ///       added columns.
-    ///     - table: The referenced table. If nil, the referenced table is
-    ///       designated by the `name` parameter.
-    ///     - deleteAction: Optional action when the referenced row
-    ///       is deleted.
-    ///     - updateAction: Optional action when the referenced row
-    ///       is updated.
-    ///     - isDeferred: A boolean value indicating whether the foreign key
-    ///       constraint is deferred.
-    ///       See <https://www.sqlite.org/foreignkeys.html#fk_deferred>.
-    ///     - indexed: A boolean value indicating whether the foreign key is
-    ///       indexed. It is true by default.
-    /// - returns: A ``ForeignKeyDefinition`` that allows you to refine the
-    ///   foreign key.
+    /// - parameters: - name: The name of the foreign key, used as a prefix for the added columns. -
+    ///   table: The referenced table. If nil, the referenced table is designated by the `name`
+    ///   parameter. - deleteAction: Optional action when the referenced row is deleted. -
+    ///   updateAction: Optional action when the referenced row is updated. - isDeferred: A boolean
+    ///   value indicating whether the foreign key constraint is deferred. See
+    ///   <https://www.sqlite.org/foreignkeys.html#fk_deferred>. - indexed: A boolean value
+    ///   indicating whether the foreign key is indexed. It is true by default.
+    /// - returns: A ``ForeignKeyDefinition`` that allows you to refine the foreign key.
     @discardableResult
     public func belongsTo(
         _ name: String,
@@ -583,9 +559,8 @@ public final class TableDefinition {
         onDelete deleteAction: Database.ForeignKeyAction? = nil,
         onUpdate updateAction: Database.ForeignKeyAction? = nil,
         deferred isDeferred: Bool = false,
-        indexed: Bool = true)
-    -> ForeignKeyDefinition
-    {
+        indexed: Bool = true
+    ) -> ForeignKeyDefinition {
         let foreignKey = ForeignKeyDefinition(
             name: name,
             table: table,
@@ -594,17 +569,17 @@ public final class TableDefinition {
             isIndexed: indexed && !inPrimaryKeyBody,
             isDeferred: isDeferred)
         columnComponents.append(.foreignKeyDefinition(foreignKey))
-        
+
         if inPrimaryKeyBody {
             // Add a not null constraint in order to fix an SQLite bug:
             // <https://www.sqlite.org/quirks.html#primary_keys_can_sometimes_contain_nulls>
             foreignKey.notNull()
             primaryKeyConstraint!.components.append(.foreignKeyDefinition(foreignKey))
         }
-        
+
         return foreignKey
     }
-    
+
     /// Adds a check constraint.
     ///
     /// For example:
@@ -643,7 +618,7 @@ public final class TableDefinition {
     public func check(_ condition: some SQLExpressible) {
         checkConstraints.append(condition.sqlExpression)
     }
-    
+
     /// Adds a check constraint.
     ///
     /// For example:
@@ -681,7 +656,7 @@ public final class TableDefinition {
     public func check(_ condition: some SQLSpecificExpressible) {
         checkConstraints.append(condition.sqlExpression)
     }
-    
+
     /// Adds a check constraint.
     ///
     /// For example:
@@ -714,10 +689,8 @@ public final class TableDefinition {
     /// Related SQLite documentation: <https://www.sqlite.org/lang_createtable.html#ckconst>
     ///
     /// - parameter sql: An SQL snippet
-    public func check(sql: String) {
-        checkConstraints.append(SQL(sql: sql).sqlExpression)
-    }
-    
+    public func check(sql: String) { checkConstraints.append(SQL(sql: sql).sqlExpression) }
+
     /// Appends a table constraint.
     ///
     /// For example:
@@ -735,11 +708,11 @@ public final class TableDefinition {
     public func constraint(sql: String) {
         literalConstraints.append(SQL(sql: sql))
     }
-    
+
     /// Appends a table constraint.
     ///
-    /// ``SQL`` literals allow you to safely embed raw values in your SQL,
-    /// without any risk of syntax errors or SQL injection:
+    /// ``SQL`` literals allow you to safely embed raw values in your SQL, without any risk of
+    /// syntax errors or SQL injection:
     ///
     /// ```swift
     /// // CREATE TABLE player (
@@ -752,12 +725,10 @@ public final class TableDefinition {
     ///     t.constraint(literal: "CHECK (score >= \(minScore))")
     /// }
     /// ```
-    public func constraint(literal: SQL) {
-        literalConstraints.append(literal)
-    }
+    public func constraint(literal: SQL) { literalConstraints.append(literal) }
 }
 
-// Explicit non-conformance to Sendable: `TableDefinition` is a mutable
-// class and there is no known reason for making it thread-safe.
+// Explicit non-conformance to Sendable: `TableDefinition` is a mutable class and there is no known
+// reason for making it thread-safe.
 @available(*, unavailable)
-extension TableDefinition: Sendable { }
+extension TableDefinition: Sendable {}

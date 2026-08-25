@@ -6,77 +6,66 @@ import XCTest
 class FailureTestCase: XCTestCase {
     private struct Failure: Hashable {
         let issue: XCTIssue
-        
+
         func issue(prefix: String = "") -> XCTIssue {
-            if prefix.isEmpty {
-                return issue
-            } else {
-                return XCTIssue(
+            prefix.isEmpty
+                ? issue
+                : XCTIssue(
                     type: issue.type,
                     compactDescription: "\(prefix): \(issue.compactDescription)",
                     detailedDescription: issue.detailedDescription,
                     sourceCodeContext: issue.sourceCodeContext,
                     associatedError: issue.associatedError,
                     attachments: issue.attachments)
-            }
         }
-        
-        private var description: String {
-            return issue.compactDescription
-        }
-        
-        func hash(into hasher: inout Hasher) {
-            hasher.combine(0)
-        }
-        
+
+        private var description: String { issue.compactDescription }
+
+        func hash(into hasher: inout Hasher) { hasher.combine(0) }
+
         static func == (lhs: Failure, rhs: Failure) -> Bool {
             lhs.description.hasPrefix(rhs.description) || rhs.description.hasPrefix(lhs.description)
         }
     }
-    
+
     private var recordedFailures: [Failure] = []
     private var isRecordingFailures = false
-    
-    func assertFailure(_ prefixes: String..., file: StaticString = #file, line: UInt = #line, _ execute: () throws -> Void) rethrows {
+
+    func assertFailure(
+        _ prefixes: String...,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ execute: () throws -> Void
+    ) rethrows {
         let recordedFailures = try recordingFailures(execute)
+
         if prefixes.isEmpty {
             if recordedFailures.isEmpty {
                 record(XCTIssue(
-                        type: .assertionFailure,
-                        compactDescription: "No failure did happen",
-                        detailedDescription: nil,
-                        sourceCodeContext: XCTSourceCodeContext(
-                            location: XCTSourceCodeLocation(
-                                filePath: String(describing: file),
-                                lineNumber: Int(line))),
-                        associatedError: nil,
-                        attachments: []))
+                    type: .assertionFailure, compactDescription: "No failure did happen",
+                    detailedDescription: nil,
+                    sourceCodeContext: XCTSourceCodeContext(location: XCTSourceCodeLocation(
+                        filePath: String(describing: file), lineNumber: Int(line))),
+                    associatedError: nil, attachments: []))
             }
         } else {
             let expectedFailures = prefixes.map { prefix -> Failure in
-                return Failure(issue: XCTIssue(
-                                type: .assertionFailure,
-                                compactDescription: prefix,
-                                detailedDescription: nil,
-                                sourceCodeContext: XCTSourceCodeContext(
-                                    location: XCTSourceCodeLocation(
-                                        filePath: String(describing: file),
-                                        lineNumber: Int(line))),
-                                associatedError: nil,
-                                attachments: []))
+                Failure(issue: XCTIssue(
+                    type: .assertionFailure, compactDescription: prefix, detailedDescription: nil,
+                    sourceCodeContext: XCTSourceCodeContext(location: XCTSourceCodeLocation(
+                        filePath: String(describing: file), lineNumber: Int(line))),
+                    associatedError: nil, attachments: []))
             }
-            assertMatch(
-                recordedFailures: recordedFailures,
-                expectedFailures: expectedFailures)
+            assertMatch(recordedFailures: recordedFailures, expectedFailures: expectedFailures)
         }
     }
-    
+
     override func setUp() {
         super.setUp()
         isRecordingFailures = false
         recordedFailures = []
     }
-    
+
     override func record(_ issue: XCTIssue) {
         if isRecordingFailures {
             recordedFailures.append(Failure(issue: issue))
@@ -84,10 +73,11 @@ class FailureTestCase: XCTestCase {
             super.record(issue)
         }
     }
-    
+
     private func recordingFailures(_ execute: () throws -> Void) rethrows -> [Failure] {
         let oldRecordingFailures = isRecordingFailures
         let oldRecordedFailures = recordedFailures
+
         defer {
             isRecordingFailures = oldRecordingFailures
             recordedFailures = oldRecordedFailures
@@ -95,25 +85,26 @@ class FailureTestCase: XCTestCase {
         isRecordingFailures = true
         recordedFailures = []
         try execute()
-        let result = recordedFailures
-        return result
+        return recordedFailures
     }
-    
+
     private func assertMatch(recordedFailures: [Failure], expectedFailures: [Failure]) {
         var recordedFailures = recordedFailures
         var expectedFailures = expectedFailures
-        
+
         while !recordedFailures.isEmpty {
             let failure = recordedFailures.removeFirst()
+
             if let index = expectedFailures.firstIndex(of: failure) {
                 expectedFailures.remove(at: index)
             } else {
                 record(failure.issue())
             }
         }
-        
+
         while !expectedFailures.isEmpty {
             let failure = expectedFailures.removeFirst()
+
             if let index = recordedFailures.firstIndex(of: failure) {
                 recordedFailures.remove(at: index)
             } else {
@@ -126,38 +117,24 @@ class FailureTestCase: XCTestCase {
 // MARK: - Tests
 
 class FailureTestCaseTests: FailureTestCase {
-    func testEmptyTest() {
-    }
-    
+    func testEmptyTest() {}
+
     func testExpectedAnyFailure() {
-        assertFailure {
-            XCTFail("foo")
-        }
+        assertFailure { XCTFail("foo") }
         assertFailure {
             XCTFail("foo")
             XCTFail("bar")
         }
     }
-    
-    func testMissingAnyFailure() {
-        assertFailure("No failure did happen") {
-            assertFailure {
-            }
-        }
-    }
-    
-    func testExpectedFailure() {
-        assertFailure("failed - foo") {
-            XCTFail("foo")
-        }
-    }
-    
+
+    func testMissingAnyFailure() { assertFailure("No failure did happen") { assertFailure {} } }
+
+    func testExpectedFailure() { assertFailure("failed - foo") { XCTFail("foo") } }
+
     func testExpectedFailureMatchesOnPrefix() {
-        assertFailure("failed - foo") {
-            XCTFail("foobarbaz")
-        }
+        assertFailure("failed - foo") { XCTFail("foobarbaz") }
     }
-    
+
     func testOrderOfExpectedFailureIsIgnored() {
         assertFailure("failed - foo", "failed - bar") {
             XCTFail("foo")
@@ -168,7 +145,7 @@ class FailureTestCaseTests: FailureTestCase {
             XCTFail("bar")
         }
     }
-    
+
     func testExpectedFailureCanBeRepeated() {
         assertFailure("failed - foo", "failed - foo", "failed - bar") {
             XCTFail("foo")
@@ -176,12 +153,10 @@ class FailureTestCaseTests: FailureTestCase {
             XCTFail("foo")
         }
     }
-    
+
     func testExactNumberOfRepetitionIsRequired() {
         assertFailure("Failure did not happen: failed - foo") {
-            assertFailure("failed - foo", "failed - foo") {
-                XCTFail("foo")
-            }
+            assertFailure("failed - foo", "failed - foo") { XCTFail("foo") }
         }
         assertFailure("failed - foo") {
             assertFailure("failed - foo", "failed - foo") {
@@ -191,14 +166,11 @@ class FailureTestCaseTests: FailureTestCase {
             }
         }
     }
-    
+
     func testUnexpectedFailure() {
-        assertFailure("Failure did not happen: failed - foo") {
-            assertFailure("failed - foo") {
-            }
-        }
+        assertFailure("Failure did not happen: failed - foo") { assertFailure("failed - foo") {} }
     }
-    
+
     func testMissedFailure() {
         assertFailure("failed - bar") {
             assertFailure("failed - foo") {

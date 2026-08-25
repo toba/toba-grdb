@@ -66,7 +66,7 @@ extension FetchableRecord where Self: Decodable {
 /// - ``FetchableRecord/databaseColumnDecodingStrategy-6uefz``
 /// - ``FetchableRecord/databaseDataDecodingStrategy(for:)``
 /// - ``FetchableRecord/databaseDateDecodingStrategy(for:)``
-/// - ``FetchableRecord/databaseDecodingUserInfo-77jim``
+/// - ``FetchableRecord/databaseDecodingUserInfo-6zhzy``
 /// - ``FetchableRecord/databaseJSONDecoder(for:)-7lmxd``
 public class FetchableRecordDecoder {
     /// Creates a decoder for fetchable records.
@@ -522,14 +522,12 @@ private struct SingleValueRowDecoder<R: FetchableRecord>: SingleValueDecodingCon
     func decode(_ type: Int16.Type) throws -> Int16 { try columnDecoder.decode(type) }
     func decode(_ type: Int32.Type) throws -> Int32 { try columnDecoder.decode(type) }
     func decode(_ type: Int64.Type) throws -> Int64 { try columnDecoder.decode(type) }
-    @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
     func decode(_ type: Int128.Type) throws -> Int128 { try columnDecoder.decode(type) }
     func decode(_ type: UInt.Type) throws -> UInt { try columnDecoder.decode(type) }
     func decode(_ type: UInt8.Type) throws -> UInt8 { try columnDecoder.decode(type) }
     func decode(_ type: UInt16.Type) throws -> UInt16 { try columnDecoder.decode(type) }
     func decode(_ type: UInt32.Type) throws -> UInt32 { try columnDecoder.decode(type) }
     func decode(_ type: UInt64.Type) throws -> UInt64 { try columnDecoder.decode(type) }
-    @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
     func decode(_ type: UInt128.Type) throws -> UInt128 { try columnDecoder.decode(type) }
     
     func decode<T>(_ type: T.Type) throws -> T where T: Decodable {

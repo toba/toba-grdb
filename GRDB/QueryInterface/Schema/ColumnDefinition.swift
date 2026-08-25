@@ -1,7 +1,6 @@
 /// Describes a database column.
 ///
-/// You get instances of `ColumnDefinition` when you create or alter a database
-/// tables. For example:
+/// You get instances of `ColumnDefinition` when you create or alter a database tables. For example:
 ///
 /// ```swift
 /// try db.create(table: "player") { t in
@@ -55,8 +54,8 @@
 ///
 /// ### Sunsetted Methods
 ///
-/// Those are legacy interfaces that are preserved for backwards compatibility.
-/// Their use is not recommended.
+/// Those are legacy interfaces that are preserved for backwards compatibility. Their use is not
+/// recommended.
 ///
 /// - ``primaryKey(onConflict:autoincrement:)``
 public final class ColumnDefinition {
@@ -64,7 +63,7 @@ public final class ColumnDefinition {
         case index
         case unique(Database.ConflictResolution)
     }
-    
+
     struct ForeignKeyConstraint {
         var destinationTable: String
         var destinationColumn: String?
@@ -72,22 +71,17 @@ public final class ColumnDefinition {
         var updateAction: Database.ForeignKeyAction?
         var isDeferred: Bool
     }
-    
+
     /// The kind of a generated column.
     ///
     /// Related SQLite documentation: <https://sqlite.org/gencol.html#virtual_versus_stored_columns>
-    public enum GeneratedColumnQualification: Sendable {
-        /// A `VIRTUAL` generated column.
-        case virtual
-        /// A `STORED` generated column.
-        case stored
-    }
-    
+    public enum GeneratedColumnQualification: Sendable { case virtual, stored }
+
     struct GeneratedColumnConstraint {
         var expression: SQLExpression
         var qualification: GeneratedColumnQualification
     }
-    
+
     let name: String
     let type: Database.ColumnType?
     var primaryKey: (conflictResolution: Database.ConflictResolution?, autoincrement: Bool)?
@@ -98,12 +92,12 @@ public final class ColumnDefinition {
     var defaultExpression: SQLExpression?
     var collationName: String?
     var generatedColumnConstraint: GeneratedColumnConstraint?
-    
+
     init(name: String, type: Database.ColumnType?) {
         self.name = name
         self.type = type
     }
-    
+
     /// Adds a primary key constraint.
     ///
     /// For example:
@@ -117,30 +111,27 @@ public final class ColumnDefinition {
     /// }
     /// ```
     ///
-    /// - important: Make sure you add a not null constraint on your primary key
-    ///   column, as in the above example, or SQLite will allow null values.
-    ///   See <https://www.sqlite.org/quirks.html#primary_keys_can_sometimes_contain_nulls>
-    ///   for more information.
+    /// - important: Make sure you add a not null constraint on your primary key column, as in the
+    ///   above example, or SQLite will allow null values. See
+    ///   <https://www.sqlite.org/quirks.html#primary_keys_can_sometimes_contain_nulls> for more
+    ///   information.
     ///
-    /// - warning: This is a legacy interface that is preserved for backwards
-    ///   compatibility. Use of this interface is not recommended: prefer
-    ///   ``TableDefinition/primaryKey(_:_:onConflict:)``
+    /// - warning: This is a legacy interface that is preserved for backwards compatibility. Use of
+    ///   this interface is not recommended: prefer ``TableDefinition/primaryKey(_:_:onConflict:)``
     ///   instead.
     ///
-    /// - parameters:
-    ///     - conflictResolution: An optional ``Database/ConflictResolution``.
-    ///     - autoincrement: If true, the primary key is autoincremented.
+    /// - parameters: - conflictResolution: An optional ``Database/ConflictResolution``. -
+    ///   autoincrement: If true, the primary key is autoincremented.
     /// - returns: `self` so that you can further refine the column definition.
     @discardableResult
     public func primaryKey(
         onConflict conflictResolution: Database.ConflictResolution? = nil,
-        autoincrement: Bool = false)
-    -> Self
-    {
+        autoincrement: Bool = false
+    ) -> Self {
         primaryKey = (conflictResolution: conflictResolution, autoincrement: autoincrement)
         return self
     }
-    
+
     /// Adds a not null constraint.
     ///
     /// For example:
@@ -163,7 +154,7 @@ public final class ColumnDefinition {
         notNullConflictResolution = conflictResolution ?? .abort
         return self
     }
-    
+
     /// Adds a unique constraint.
     ///
     /// For example:
@@ -186,7 +177,7 @@ public final class ColumnDefinition {
         indexing = .unique(conflictResolution ?? .abort)
         return self
     }
-    
+
     /// Adds an index.
     ///
     /// For example:
@@ -199,21 +190,18 @@ public final class ColumnDefinition {
     /// }
     /// ```
     ///
-    /// The name of the created index is `<table>_on_<column>`, where `table`
-    /// and `column` are the names of the table and the column. See the
-    /// example above.
+    /// The name of the created index is `<table>_on_<column>`, where `table` and `column` are the
+    /// names of the table and the column. See the example above.
     ///
     /// See also ``unique(onConflict:)``.
     ///
     /// - returns: `self` so that you can further refine the column definition.
     @discardableResult
     public func indexed() -> Self {
-        if case .none = indexing {
-            self.indexing = .index
-        }
+        if case .none = indexing { indexing = .index }
         return self
     }
-    
+
     /// Adds a check constraint.
     ///
     /// For example:
@@ -229,15 +217,15 @@ public final class ColumnDefinition {
     ///
     /// Related SQLite documentation: <https://www.sqlite.org/lang_createtable.html#ckconst>
     ///
-    /// - parameter condition: A closure whose argument is a ``Column`` that
-    ///   represents the defined column, and returns the expression to check.
+    /// - parameter condition: A closure whose argument is a ``Column`` that represents the defined
+    ///   column, and returns the expression to check.
     /// - returns: `self` so that you can further refine the column definition.
     @discardableResult
     public func check(_ condition: (Column) -> any SQLExpressible) -> Self {
         checkConstraints.append(condition(Column(name)).sqlExpression)
         return self
     }
-    
+
     /// Adds a check constraint.
     ///
     /// For example:
@@ -260,7 +248,7 @@ public final class ColumnDefinition {
         checkConstraints.append(SQL(sql: sql).sqlExpression)
         return self
     }
-    
+
     /// Defines the default value.
     ///
     /// For example:
@@ -283,7 +271,7 @@ public final class ColumnDefinition {
         defaultExpression = value.sqlExpression
         return self
     }
-    
+
     /// Defines the default value.
     ///
     /// For example:
@@ -306,7 +294,7 @@ public final class ColumnDefinition {
         defaultExpression = SQL(sql: sql).sqlExpression
         return self
     }
-    
+
     /// Defines the default collation.
     ///
     /// For example:
@@ -329,7 +317,7 @@ public final class ColumnDefinition {
         collationName = collation.rawValue
         return self
     }
-    
+
     /// Defines the default collation.
     ///
     /// For example:
@@ -349,8 +337,8 @@ public final class ColumnDefinition {
         collationName = collation.name
         return self
     }
-    
-#if GRDBCUSTOMSQLITE || SQLITE_HAS_CODEC
+
+    #if GRDBCUSTOMSQLITE || SQLITE_HAS_CODEC
     /// Defines the column as a generated column.
     ///
     /// For example:
@@ -370,8 +358,8 @@ public final class ColumnDefinition {
     /// }
     /// ```
     ///
-    /// To remove the generated columns from the selection of record types,
-    /// define their `databaseSelection`:
+    /// To remove the generated columns from the selection of record types, define their
+    /// `databaseSelection`:
     ///
     /// ```swift
     /// struct Player: Codable {
@@ -398,24 +386,21 @@ public final class ColumnDefinition {
     ///
     /// Related SQLite documentation: <https://sqlite.org/gencol.html>
     ///
-    /// - parameters:
-    ///     - sql: An SQL expression.
-    ///     - qualification: The generated column's qualification, which
-    ///       defaults to ``GeneratedColumnQualification/virtual``.
+    /// - parameters: - sql: An SQL expression. - qualification: The generated column's
+    ///   qualification, which defaults to ``GeneratedColumnQualification/virtual``.
     /// - returns: `self` so that you can further refine the column definition.
     @discardableResult
     public func generatedAs(
         sql: String,
-        _ qualification: GeneratedColumnQualification = .virtual)
-    -> Self
-    {
+        _ qualification: GeneratedColumnQualification = .virtual
+    ) -> Self {
         let expression = SQL(sql: sql).sqlExpression
         generatedColumnConstraint = GeneratedColumnConstraint(
             expression: expression,
             qualification: qualification)
         return self
     }
-    
+
     /// Defines the column as a generated column.
     ///
     /// For example:
@@ -435,8 +420,8 @@ public final class ColumnDefinition {
     /// }
     /// ```
     ///
-    /// To remove the generated columns from the selection of record types,
-    /// define their `databaseSelection`:
+    /// To remove the generated columns from the selection of record types, define their
+    /// `databaseSelection`:
     ///
     /// ```swift
     /// struct Player: Codable {
@@ -463,23 +448,20 @@ public final class ColumnDefinition {
     ///
     /// Related SQLite documentation: <https://sqlite.org/gencol.html>
     ///
-    /// - parameters:
-    ///     - expression: The generated expression.
-    ///     - qualification: The generated column's qualification, which
-    ///       defaults to ``GeneratedColumnQualification/virtual``.
+    /// - parameters: - expression: The generated expression. - qualification: The generated
+    ///   column's qualification, which defaults to ``GeneratedColumnQualification/virtual``.
     /// - returns: `self` so that you can further refine the column definition.
     @discardableResult
     public func generatedAs(
         _ expression: some SQLExpressible,
-        _ qualification: GeneratedColumnQualification = .virtual)
-    -> Self
-    {
+        _ qualification: GeneratedColumnQualification = .virtual
+    ) -> Self {
         generatedColumnConstraint = GeneratedColumnConstraint(
             expression: expression.sqlExpression,
             qualification: qualification)
         return self
     }
-#else
+    #else
     /// Defines the column as a generated column.
     ///
     /// For example:
@@ -499,8 +481,8 @@ public final class ColumnDefinition {
     /// }
     /// ```
     ///
-    /// To remove the generated columns from the selection of record types,
-    /// define their `databaseSelection`:
+    /// To remove the generated columns from the selection of record types, define their
+    /// `databaseSelection`:
     ///
     /// ```swift
     /// struct Player: Codable {
@@ -527,25 +509,21 @@ public final class ColumnDefinition {
     ///
     /// Related SQLite documentation: <https://sqlite.org/gencol.html>
     ///
-    /// - parameters:
-    ///     - sql: An SQL expression.
-    ///     - qualification: The generated column's qualification, which
-    ///       defaults to ``GeneratedColumnQualification/virtual``.
+    /// - parameters: - sql: An SQL expression. - qualification: The generated column's
+    ///   qualification, which defaults to ``GeneratedColumnQualification/virtual``.
     /// - returns: `self` so that you can further refine the column definition.
-    @available(iOS 15, macOS 12, tvOS 15, watchOS 8, *) // SQLite 3.35.0+ (3.31 actually)
     @discardableResult
     public func generatedAs(
         sql: String,
-        _ qualification: GeneratedColumnQualification = .virtual)
-    -> Self
-    {
+        _ qualification: GeneratedColumnQualification = .virtual
+    ) -> Self {
         let expression = SQL(sql: sql).sqlExpression
         generatedColumnConstraint = GeneratedColumnConstraint(
             expression: expression,
             qualification: qualification)
         return self
     }
-    
+
     /// Defines the column as a generated column.
     ///
     /// For example:
@@ -565,8 +543,8 @@ public final class ColumnDefinition {
     /// }
     /// ```
     ///
-    /// To remove the generated columns from the selection of record types,
-    /// define their `databaseSelection`:
+    /// To remove the generated columns from the selection of record types, define their
+    /// `databaseSelection`:
     ///
     /// ```swift
     /// struct Player: Codable {
@@ -593,25 +571,21 @@ public final class ColumnDefinition {
     ///
     /// Related SQLite documentation: <https://sqlite.org/gencol.html>
     ///
-    /// - parameters:
-    ///     - expression: The generated expression.
-    ///     - qualification: The generated column's qualification, which
-    ///       defaults to ``GeneratedColumnQualification/virtual``.
+    /// - parameters: - expression: The generated expression. - qualification: The generated
+    ///   column's qualification, which defaults to ``GeneratedColumnQualification/virtual``.
     /// - returns: `self` so that you can further refine the column definition.
-    @available(iOS 15, macOS 12, tvOS 15, watchOS 8, *) // SQLite 3.35.0+ (3.31 actually)
     @discardableResult
     public func generatedAs(
         _ expression: some SQLExpressible,
-        _ qualification: GeneratedColumnQualification = .virtual)
-    -> Self
-    {
+        _ qualification: GeneratedColumnQualification = .virtual
+    ) -> Self {
         generatedColumnConstraint = GeneratedColumnConstraint(
             expression: expression.sqlExpression,
             qualification: qualification)
         return self
     }
-#endif
-    
+    #endif
+
     /// Adds a foreign key constraint.
     ///
     /// For example:
@@ -627,16 +601,12 @@ public final class ColumnDefinition {
     ///
     /// Related SQLite documentation: <https://www.sqlite.org/foreignkeys.html>
     ///
-    /// - parameters:
-    ///     - table: The referenced table.
-    ///     - column: The referenced column in the referenced table. If not
-    ///       specified, the column of the primary key of the referenced table
-    ///       is used.
-    ///     - deleteAction: Optional action when the referenced row is deleted.
-    ///     - updateAction: Optional action when the referenced row is updated.
-    ///     - isDeferred: A boolean value indicating whether the foreign key
-    ///       constraint is deferred.
-    ///       See <https://www.sqlite.org/foreignkeys.html#fk_deferred>.
+    /// - parameters: - table: The referenced table. - column: The referenced column in the
+    ///   referenced table. If not specified, the column of the primary key of the referenced table
+    ///   is used. - deleteAction: Optional action when the referenced row is deleted. -
+    ///   updateAction: Optional action when the referenced row is updated. - isDeferred: A boolean
+    ///   value indicating whether the foreign key constraint is deferred. See
+    ///   <https://www.sqlite.org/foreignkeys.html#fk_deferred>.
     /// - returns: `self` so that you can further refine the column definition.
     @discardableResult
     public func references(
@@ -644,33 +614,30 @@ public final class ColumnDefinition {
         column: String? = nil,
         onDelete deleteAction: Database.ForeignKeyAction? = nil,
         onUpdate updateAction: Database.ForeignKeyAction? = nil,
-        deferred isDeferred: Bool = false) -> Self
-    {
+        deferred isDeferred: Bool = false
+    ) -> Self {
         foreignKeyConstraints.append(ForeignKeyConstraint(
-            destinationTable: table,
-            destinationColumn: column,
-            deleteAction: deleteAction,
-            updateAction: updateAction,
-            isDeferred: isDeferred))
+            destinationTable: table, destinationColumn: column, deleteAction: deleteAction,
+            updateAction: updateAction, isDeferred: isDeferred))
         return self
     }
-    
+
     func indexDefinition(in table: String, options: IndexOptions = []) -> IndexDefinition? {
         switch indexing {
-        case .none: return nil
-        case .unique: return nil
-        case .index:
-            return IndexDefinition(
-                name: "\(table)_on_\(name)",
-                table: table,
-                expressions: [.column(name)],
-                options: options,
-                condition: nil)
+            case .none: nil
+            case .unique: nil
+            case .index:
+                IndexDefinition(
+                    name: "\(table)_on_\(name)",
+                    table: table,
+                    expressions: [.column(name)],
+                    options: options,
+                    condition: nil)
         }
     }
 }
 
-// Explicit non-conformance to Sendable: `ColumnDefinition` is a mutable
-// class and there is no known reason for making it thread-safe.
+// Explicit non-conformance to Sendable: `ColumnDefinition` is a mutable class and there is no known
+// reason for making it thread-safe.
 @available(*, unavailable)
-extension ColumnDefinition: Sendable { }
+extension ColumnDefinition: Sendable {}

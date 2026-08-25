@@ -1,58 +1,51 @@
 import XCTest
 @testable import GRDB
 
-class DatabaseSuspensionTests : GRDBTestCase {
-    
+class DatabaseSuspensionTests: GRDBTestCase {
     private func makeDatabaseQueue(journalMode: String) throws -> DatabaseQueue {
         let dbQueue = try makeDatabaseQueue()
-        let actualJournalMode = try dbQueue.inDatabase { try String.fetchOne($0, sql: "PRAGMA journal_mode=\(journalMode)") }
+        let actualJournalMode = try dbQueue.inDatabase {
+            try String.fetchOne($0, sql: "PRAGMA journal_mode=\(journalMode)")
+        }
         XCTAssertEqual(actualJournalMode, journalMode)
         return dbQueue
     }
-    
+
     // MARK: - BEGIN TRANSACTION
-    
+
     func testSuspensionPreventsNewTransactionInDeleteJournalMode() throws {
         let dbQueue = try makeDatabaseQueue(journalMode: "delete")
         dbQueue.suspend()
-        
+
         do {
-            try dbQueue.inDatabase { db in
-                try db.execute(sql: "BEGIN TRANSACTION")
-            }
+            try dbQueue.inDatabase { db in try db.execute(sql: "BEGIN TRANSACTION") }
             XCTFail("Expected error")
         } catch let error as DatabaseError {
             XCTAssertEqual(error.resultCode, .SQLITE_ABORT)
             XCTAssertEqual(error.message, "Database is suspended")
             XCTAssertEqual(error.sql, "BEGIN TRANSACTION")
         }
-        
+
         do {
-            try dbQueue.inDatabase { db in
-                try db.execute(sql: "BEGIN IMMEDIATE TRANSACTION")
-            }
+            try dbQueue.inDatabase { db in try db.execute(sql: "BEGIN IMMEDIATE TRANSACTION") }
             XCTFail("Expected error")
         } catch let error as DatabaseError {
             XCTAssertEqual(error.resultCode, .SQLITE_ABORT)
             XCTAssertEqual(error.message, "Database is suspended")
             XCTAssertEqual(error.sql, "BEGIN IMMEDIATE TRANSACTION")
         }
-        
+
         do {
-            try dbQueue.inDatabase { db in
-                try db.execute(sql: "BEGIN EXCLUSIVE TRANSACTION")
-            }
+            try dbQueue.inDatabase { db in try db.execute(sql: "BEGIN EXCLUSIVE TRANSACTION") }
             XCTFail("Expected error")
         } catch let error as DatabaseError {
             XCTAssertEqual(error.resultCode, .SQLITE_ABORT)
             XCTAssertEqual(error.message, "Database is suspended")
             XCTAssertEqual(error.sql, "BEGIN EXCLUSIVE TRANSACTION")
         }
-        
+
         do {
-            try dbQueue.inDatabase { db in
-                try db.execute(sql: "SAVEPOINT test")
-            }
+            try dbQueue.inDatabase { db in try db.execute(sql: "SAVEPOINT test") }
             XCTFail("Expected error")
         } catch let error as DatabaseError {
             XCTAssertEqual(error.resultCode, .SQLITE_ABORT)
@@ -60,36 +53,32 @@ class DatabaseSuspensionTests : GRDBTestCase {
             XCTAssertEqual(error.sql, "SAVEPOINT test")
         }
     }
-    
+
     func testSuspensionDoesNotPreventNewDeferredTransactionInWALMode() throws {
         let dbQueue = try makeDatabaseQueue(journalMode: "wal")
         dbQueue.suspend()
-        
+
         try dbQueue.inDatabase { db in
             try db.execute(sql: "BEGIN TRANSACTION; ROLLBACK")
             try db.execute(sql: "SAVEPOINT test; RELEASE SAVEPOINT test")
         }
     }
-    
+
     func testSuspensionPreventsNewImmediateOrExclusiveTransactionInWALMode() throws {
         let dbQueue = try makeDatabaseQueue(journalMode: "wal")
         dbQueue.suspend()
-        
+
         do {
-            try dbQueue.inDatabase { db in
-                try db.execute(sql: "BEGIN IMMEDIATE TRANSACTION")
-            }
+            try dbQueue.inDatabase { db in try db.execute(sql: "BEGIN IMMEDIATE TRANSACTION") }
             XCTFail("Expected error")
         } catch let error as DatabaseError {
             XCTAssertEqual(error.resultCode, .SQLITE_ABORT)
             XCTAssertEqual(error.message, "Database is suspended")
             XCTAssertEqual(error.sql, "BEGIN IMMEDIATE TRANSACTION")
         }
-        
+
         do {
-            try dbQueue.inDatabase { db in
-                try db.execute(sql: "BEGIN EXCLUSIVE TRANSACTION")
-            }
+            try dbQueue.inDatabase { db in try db.execute(sql: "BEGIN EXCLUSIVE TRANSACTION") }
             XCTFail("Expected error")
         } catch let error as DatabaseError {
             XCTAssertEqual(error.resultCode, .SQLITE_ABORT)
@@ -97,9 +86,9 @@ class DatabaseSuspensionTests : GRDBTestCase {
             XCTAssertEqual(error.sql, "BEGIN EXCLUSIVE TRANSACTION")
         }
     }
-    
+
     // MARK: - COMMIT, ROLLBACK, RELEASE SAVEPOINT, ROLLBACK TRANSACTION TO SAVEPOINT
-    
+
     func testSuspensionDoesNotPreventCommit() throws {
         func test(_ dbQueue: DatabaseQueue) throws {
             try dbQueue.inDatabase { db in
@@ -111,7 +100,7 @@ class DatabaseSuspensionTests : GRDBTestCase {
         try test(makeDatabaseQueue(journalMode: "delete"))
         try test(makeDatabaseQueue(journalMode: "wal"))
     }
-    
+
     func testSuspensionDoesNotPreventRollback() throws {
         func test(_ dbQueue: DatabaseQueue) throws {
             try dbQueue.inDatabase { db in
@@ -123,7 +112,7 @@ class DatabaseSuspensionTests : GRDBTestCase {
         try test(makeDatabaseQueue(journalMode: "delete"))
         try test(makeDatabaseQueue(journalMode: "wal"))
     }
-    
+
     func testSuspensionDoesNotPreventReleaseSavePoint() throws {
         func test(_ dbQueue: DatabaseQueue) throws {
             try dbQueue.inDatabase { db in
@@ -135,7 +124,7 @@ class DatabaseSuspensionTests : GRDBTestCase {
         try test(makeDatabaseQueue(journalMode: "delete"))
         try test(makeDatabaseQueue(journalMode: "wal"))
     }
-    
+
     func testSuspensionDoesNotPreventRollbackSavePoint() throws {
         func test(_ dbQueue: DatabaseQueue) throws {
             try dbQueue.inDatabase { db in
@@ -148,11 +137,12 @@ class DatabaseSuspensionTests : GRDBTestCase {
         try test(makeDatabaseQueue(journalMode: "delete"))
         try test(makeDatabaseQueue(journalMode: "wal"))
     }
-    
+
     // MARK: - SELECT
-    
+
     func testSuspensionPreventsReadInDeleteJournalMode() throws {
         let dbQueue = try makeDatabaseQueue(journalMode: "delete")
+
         do {
             try dbQueue.inDatabase { db in
                 try db.execute(sql: "CREATE TABLE t(a)")
@@ -166,24 +156,24 @@ class DatabaseSuspensionTests : GRDBTestCase {
             XCTAssertEqual(error.sql, "SELECT COUNT(*) FROM t")
         }
     }
-    
+
     func testSuspensionDoesNotPreventReadInWALMode() throws {
         let dbQueue = try makeDatabaseQueue(journalMode: "wal")
         try dbQueue.inDatabase { db in
             try db.execute(sql: "CREATE TABLE t(a)")
             dbQueue.suspend()
-            
+
             try XCTAssertEqual(Int.fetchOne(db, sql: "SELECT COUNT(*) FROM t"), 0)
-            
+
             try db.inTransaction(.deferred) {
                 try XCTAssertEqual(Int.fetchOne(db, sql: "SELECT COUNT(*) FROM t"), 0)
                 return .commit
             }
         }
     }
-    
+
     // MARK: - INSERT
-    
+
     func testSuspensionPreventsWriteInDeleteJournalMode() throws {
         let dbQueue = try makeDatabaseQueue(journalMode: "delete")
         try dbQueue.inDatabase { db in
@@ -199,13 +189,13 @@ class DatabaseSuspensionTests : GRDBTestCase {
             }
         }
     }
-    
+
     func testSuspensionPreventsWriteInWALMode() throws {
         let dbQueue = try makeDatabaseQueue(journalMode: "wal")
         try dbQueue.inDatabase { db in
             try db.execute(sql: "CREATE TABLE t(a)")
             dbQueue.suspend()
-            
+
             do {
                 try db.execute(sql: "INSERT INTO t DEFAULT VALUES")
                 XCTFail("Expected error")
@@ -214,7 +204,7 @@ class DatabaseSuspensionTests : GRDBTestCase {
                 XCTAssertEqual(error.message, "Database is suspended")
                 XCTAssertEqual(error.sql, "INSERT INTO t DEFAULT VALUES")
             }
-            
+
             do {
                 try db.inTransaction(.deferred) {
                     try db.execute(sql: "INSERT INTO t DEFAULT VALUES")
@@ -228,9 +218,9 @@ class DatabaseSuspensionTests : GRDBTestCase {
             }
         }
     }
-    
+
     // MARK: - Automatic ROLLBACK
-    
+
     func testSuspensionRollbacksOnPreventedWrite() throws {
         func test(_ dbQueue: DatabaseQueue) throws {
             do {
@@ -258,9 +248,9 @@ class DatabaseSuspensionTests : GRDBTestCase {
         try test(makeDatabaseQueue(journalMode: "delete"))
         try test(makeDatabaseQueue(journalMode: "wal"))
     }
-    
+
     // MARK: - Concurrent Lock Prevention
-    
+
     func testSuspensionAbortsDatabaseQueueAccess() throws {
         func test(_ dbQueue: DatabaseQueue) throws {
             let semaphore1 = DispatchSemaphore(value: 0)
@@ -272,12 +262,10 @@ class DatabaseSuspensionTests : GRDBTestCase {
                     return nil
                 })
             }
-            
-            let block1 = {
+
+            let block1: @Sendable () -> Void = {
                 do {
-                    _ = try dbQueue.inDatabase {
-                        try Row.fetchAll($0, sql: "SELECT wait()")
-                    }
+                    _ = try dbQueue.inDatabase { try Row.fetchAll($0, sql: "SELECT wait()") }
                     XCTFail("Expected error")
                 } catch let error as DatabaseError {
                     XCTAssertEqual(error.resultCode, .SQLITE_INTERRUPT)
@@ -285,29 +273,25 @@ class DatabaseSuspensionTests : GRDBTestCase {
                     XCTFail("Unexpected error: \(error)")
                 }
             }
-            let block2 = {
+            let block2: @Sendable () -> Void = {
                 semaphore1.wait()
                 dbQueue.suspend()
                 semaphore2.signal()
             }
-            let blocks = [block1, block2]
-            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in
-                blocks[index]()
-            }
+            let blocks: [@Sendable () -> Void] = [block1, block2]
+            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in blocks[index]() }
         }
         try test(makeDatabaseQueue(journalMode: "delete"))
         try test(makeDatabaseQueue(journalMode: "wal"))
     }
-    
+
     func testSuspensionDoesNotPreventFurtherReadInWALMode() throws {
         let dbQueue = try makeDatabaseQueue(journalMode: "wal")
-        try dbQueue.write { db in
-            try db.execute(sql: "CREATE TABLE t(a)")
-        }
-        
+        try dbQueue.write { db in try db.execute(sql: "CREATE TABLE t(a)") }
+
         let semaphore1 = DispatchSemaphore(value: 0)
         let semaphore2 = DispatchSemaphore(value: 0)
-        
+
         dbQueue.inDatabase { db in
             db.add(function: DatabaseFunction("wait", argumentCount: 0, pure: true) { _ in
                 semaphore1.signal()
@@ -315,7 +299,7 @@ class DatabaseSuspensionTests : GRDBTestCase {
                 return nil
             })
         }
-        let block1 = {
+        let block1: @Sendable () -> Void = {
             do {
                 try dbQueue.inTransaction { db in
                     do {
@@ -332,26 +316,22 @@ class DatabaseSuspensionTests : GRDBTestCase {
                 XCTFail("Unexpected error: \(error)")
             }
         }
-        let block2 = {
+        let block2: @Sendable () -> Void = {
             semaphore1.wait()
             dbQueue.suspend()
             semaphore2.signal()
         }
-        let blocks = [block1, block2]
-        DispatchQueue.concurrentPerform(iterations: blocks.count) { index in
-            blocks[index]()
-        }
+        let blocks: [@Sendable () -> Void] = [block1, block2]
+        DispatchQueue.concurrentPerform(iterations: blocks.count) { index in blocks[index]() }
     }
-    
+
     func testWriteTransactionAbortedDuringStatementExecution() throws {
         func test(_ dbQueue: DatabaseQueue) throws {
-            try dbQueue.write { db in
-                try db.execute(sql: "CREATE TABLE t(a)")
-            }
-            
+            try dbQueue.write { db in try db.execute(sql: "CREATE TABLE t(a)") }
+
             let semaphore1 = DispatchSemaphore(value: 0)
             let semaphore2 = DispatchSemaphore(value: 0)
-            
+
             dbQueue.inDatabase { db in
                 db.add(function: DatabaseFunction("wait", argumentCount: 0, pure: true) { _ in
                     semaphore1.signal()
@@ -359,11 +339,9 @@ class DatabaseSuspensionTests : GRDBTestCase {
                     return nil
                 })
             }
-            let block1 = {
+            let block1: @Sendable () -> Void = {
                 do {
-                    try dbQueue.write { db in
-                        try db.execute(sql: "INSERT INTO t SELECT wait()")
-                    }
+                    try dbQueue.write { db in try db.execute(sql: "INSERT INTO t SELECT wait()") }
                     XCTFail("Expected error")
                 } catch let error as DatabaseError {
                     // Transactions throw the first uncatched error: SQLITE_INTERRUPT
@@ -374,29 +352,25 @@ class DatabaseSuspensionTests : GRDBTestCase {
                     XCTFail("Unexpected error: \(error)")
                 }
             }
-            let block2 = {
+            let block2: @Sendable () -> Void = {
                 semaphore1.wait()
                 dbQueue.suspend()
                 semaphore2.signal()
             }
-            let blocks = [block1, block2]
-            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in
-                blocks[index]()
-            }
+            let blocks: [@Sendable () -> Void] = [block1, block2]
+            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in blocks[index]() }
         }
         try test(makeDatabaseQueue(journalMode: "delete"))
         try test(makeDatabaseQueue(journalMode: "wal"))
     }
-    
+
     func testWriteTransactionAbortedDuringStatementExecutionPreventsFurtherDatabaseAccess() throws {
         func test(_ dbQueue: DatabaseQueue) throws {
-            try dbQueue.write { db in
-                try db.execute(sql: "CREATE TABLE t(a)")
-            }
-            
+            try dbQueue.write { db in try db.execute(sql: "CREATE TABLE t(a)") }
+
             let semaphore1 = DispatchSemaphore(value: 0)
             let semaphore2 = DispatchSemaphore(value: 0)
-            
+
             dbQueue.inDatabase { db in
                 db.add(function: DatabaseFunction("wait", argumentCount: 0, pure: true) { _ in
                     semaphore1.signal()
@@ -404,7 +378,7 @@ class DatabaseSuspensionTests : GRDBTestCase {
                     return nil
                 })
             }
-            let block1 = {
+            let block1: @Sendable () -> Void = {
                 do {
                     try dbQueue.write { db in
                         do {
@@ -413,9 +387,9 @@ class DatabaseSuspensionTests : GRDBTestCase {
                         } catch let error as DatabaseError {
                             XCTAssertEqual(error.resultCode, .SQLITE_INTERRUPT)
                         }
-                        
+
                         XCTAssertFalse(db.isInsideTransaction)
-                        
+
                         do {
                             _ = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM t")
                             XCTFail("Expected error")
@@ -427,30 +401,28 @@ class DatabaseSuspensionTests : GRDBTestCase {
                     }
                     XCTFail("Expected error")
                 } catch let error as DatabaseError {
-                    // SQLITE_INTERRUPT has been caught. So we get SQLITE_ABORT
-                    // from the last commit.
+                    // SQLITE_INTERRUPT has been caught. So we get SQLITE_ABORT from the last
+                    // commit.
                     XCTAssertEqual(error.resultCode, .SQLITE_ABORT)
                     XCTAssertEqual(error.message, "Transaction was aborted")
                 } catch {
                     XCTFail("Unexpected error: \(error)")
                 }
             }
-            let block2 = {
+            let block2: @Sendable () -> Void = {
                 semaphore1.wait()
                 dbQueue.suspend()
                 semaphore2.signal()
             }
-            let blocks = [block1, block2]
-            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in
-                blocks[index]()
-            }
+            let blocks: [@Sendable () -> Void] = [block1, block2]
+            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in blocks[index]() }
         }
         try test(makeDatabaseQueue(journalMode: "delete"))
         try test(makeDatabaseQueue(journalMode: "wal"))
     }
-    
+
     // MARK: - resume
-    
+
     func testResume() throws {
         let dbQueue = try makeDatabaseQueue(journalMode: "delete")
         try dbQueue.inDatabase { db in
@@ -460,9 +432,9 @@ class DatabaseSuspensionTests : GRDBTestCase {
             try XCTAssertEqual(Int.fetchOne(db, sql: "SELECT COUNT(*) FROM t")!, 0)
         }
     }
-    
+
     // MARK: - journalModeCache
-    
+
     // Test for internals. Make sure the journalModeCache is not set too early,
     // especially not before user can choose the journal mode
     func testJournalModeCache() throws {
@@ -507,9 +479,7 @@ class DatabaseSuspensionTests : GRDBTestCase {
                 try db.execute(sql: "SELECT * FROM sqlite_master")
                 XCTAssertEqual(db.journalModeCache, "wal")
             }
-            dbPool.writeWithoutTransaction { db in
-                XCTAssertEqual(db.journalModeCache, "wal")
-            }
+            dbPool.writeWithoutTransaction { db in XCTAssertEqual(db.journalModeCache, "wal") }
             try dbPool.read { db in
                 XCTAssertNil(db.journalModeCache)
                 try db.execute(sql: "SELECT * FROM sqlite_master")

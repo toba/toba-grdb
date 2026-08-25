@@ -5,29 +5,30 @@ class ValueObservationRegionRecordingTests: GRDBTestCase {
     func testRecordingSelectedRegion() throws {
         let dbQueue = try makeDatabaseQueue()
         try dbQueue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE team(id INTEGER PRIMARY KEY, name TEXT);
-                CREATE TABLE player(id INTEGER PRIMARY KEY, name TEXT);
-                """)
-            
+            try db.execute(
+                sql: """
+                    CREATE TABLE team(id INTEGER PRIMARY KEY, name TEXT);
+                    CREATE TABLE player(id INTEGER PRIMARY KEY, name TEXT);
+                    """)
+
             do {
                 var region = DatabaseRegion()
-                db.recordingSelection(&region) { }
+                db.recordingSelection(&region) {}
                 XCTAssertTrue(region.isEmpty)
             }
-            
+
             do {
                 var region = DatabaseRegion.fullDatabase
-                db.recordingSelection(&region) { }
+                db.recordingSelection(&region) {}
                 XCTAssertTrue(region.isFullDatabase)
             }
-            
+
             do {
                 var region = DatabaseRegion(table: "player")
-                db.recordingSelection(&region) { }
+                db.recordingSelection(&region) {}
                 XCTAssertEqual(region.description, "player(*)")
             }
-            
+
             do {
                 var region = DatabaseRegion()
                 _ = try db.recordingSelection(&region) {
@@ -35,7 +36,7 @@ class ValueObservationRegionRecordingTests: GRDBTestCase {
                 }
                 XCTAssertEqual(region.description, "team(id,name)")
             }
-            
+
             do {
                 var region = DatabaseRegion.fullDatabase
                 _ = try db.recordingSelection(&region) {
@@ -43,7 +44,7 @@ class ValueObservationRegionRecordingTests: GRDBTestCase {
                 }
                 XCTAssertTrue(region.isFullDatabase)
             }
-            
+
             do {
                 var region = DatabaseRegion(table: "player")
                 _ = try db.recordingSelection(&region) {
@@ -51,7 +52,7 @@ class ValueObservationRegionRecordingTests: GRDBTestCase {
                 }
                 XCTAssertEqual(region.description, "player(*),team(id,name)")
             }
-            
+
             do {
                 var region = DatabaseRegion()
                 _ = try db.recordingSelection(&region) {
@@ -59,14 +60,12 @@ class ValueObservationRegionRecordingTests: GRDBTestCase {
                 }
                 XCTAssertEqual(region.description, "player(name)")
             }
-            
+
             do {
                 // Test for rowID optimization
-                struct Player: TableRecord, FetchableRecord, Decodable { }
+                struct Player: TableRecord, FetchableRecord, Decodable {}
                 var region = DatabaseRegion()
-                _ = try db.recordingSelection(&region) {
-                    _ = try Player.fetchOne(db, key: 123)
-                }
+                _ = try db.recordingSelection(&region) { _ = try Player.fetchOne(db, key: 123) }
                 XCTAssert(region.description.contains("player(id,name)[123]"))
             }
 
@@ -88,9 +87,9 @@ class ValueObservationRegionRecordingTests: GRDBTestCase {
                 _ = try db.recordingSelection(&region1) {
                     _ = try Row.fetchAll(db, sql: "SELECT * FROM team")
                     _ = try db.recordingSelection(&region2) {
-                        db.recordingSelection(&region3) { }
+                        db.recordingSelection(&region3) {}
                         _ = try Row.fetchAll(db, sql: "SELECT name FROM player")
-                        db.recordingSelection(&region4) { }
+                        db.recordingSelection(&region4) {}
                     }
                     _ = try db.recordingSelection(&region5) {
                         _ = try Row.fetchAll(db, sql: "SELECT * FROM player")
@@ -104,100 +103,104 @@ class ValueObservationRegionRecordingTests: GRDBTestCase {
             }
         }
     }
-    
+
+    // start(in:) resolves to the main-actor overload here
+    @MainActor
     func testTupleObservation() throws {
-        // Here we just test that user can destructure an observed tuple.
-        // I'm completely paranoid about tuple destructuring - I can't wrap my
-        // head about the rules that allow or disallow it.
+        // Here we just test that user can destructure an observed tuple. I'm completely paranoid
+        // about tuple destructuring - I can't wrap my head about the rules that allow or disallow
+        // it.
         let dbQueue = try makeDatabaseQueue()
-        let observation = ValueObservation.trackingConstantRegion { db -> (Int, String) in
-            (0, "")
-        }
-        _ = observation.start(
-            in: dbQueue,
-            onError: { _ in },
-            onChange: { (int: Int, string: String) in }) // <- destructure
+        let observation = ValueObservation.trackingConstantRegion { _ -> (Int, String) in (0, "") }
+        _ = observation.start(in: dbQueue, onError: { _ in }, onChange: { (_: Int, _: String) in })  // <- destructure
     }
-    
+
+    // start(in:) resolves to the main-actor overload here
+    @MainActor
     func testVaryingRegionTrackingImmediateScheduling() throws {
         let dbQueue = try makeDatabaseQueue()
         try dbQueue.write {
-            try $0.execute(sql: """
-                CREATE TABLE source(name TEXT);
-                INSERT INTO source VALUES ('a');
-                CREATE TABLE a(value INTEGER);
-                CREATE TABLE b(value INTEGER);
-                """)
+            try $0.execute(
+                sql: """
+                    CREATE TABLE source(name TEXT);
+                    INSERT INTO source VALUES ('a');
+                    CREATE TABLE a(value INTEGER);
+                    CREATE TABLE b(value INTEGER);
+                    """)
         }
-        
+
         let resultsMutex: Mutex<[Int]> = Mutex([])
         let notificationExpectation = expectation(description: "notification")
         notificationExpectation.assertForOverFulfill = true
         notificationExpectation.expectedFulfillmentCount = 4
-        
+
         let regionsMutex: Mutex<[DatabaseRegion]> = Mutex([])
-        let observation = ValueObservation
+        let observation =
+            ValueObservation
             .tracking { db -> Int in
                 let table = try String.fetchOne(db, sql: "SELECT name FROM source")!
                 return try Int.fetchOne(db, sql: "SELECT IFNULL(SUM(value), 0) FROM \(table)")!
             }
-            .handleEvents(willTrackRegion: { region in
-                regionsMutex.withLock { $0.append(region) }
-            })
-        
+            .handleEvents(willTrackRegion: { region in regionsMutex.withLock { $0.append(region) } }
+            )
+
         let observer = observation.start(
             in: dbQueue,
             onError: { error in XCTFail("Unexpected error: \(error)") },
             onChange: { count in
                 resultsMutex.withLock { $0.append(count) }
                 notificationExpectation.fulfill()
-        })
-        
+            })
+
         try withExtendedLifetime(observer) {
             try dbQueue.inDatabase { db in
-                try db.execute(sql: "INSERT INTO a VALUES (1)") // 1
-                try db.execute(sql: "INSERT INTO b VALUES (1)") // -
-                try db.execute(sql: "INSERT INTO b VALUES (1)") // -
-                try db.execute(sql: "UPDATE source SET name = 'b'") // 2
-                try db.execute(sql: "INSERT INTO a VALUES (1)") // -
-                try db.execute(sql: "INSERT INTO b VALUES (1)") // 3
+                try db.execute(sql: "INSERT INTO a VALUES (1)")  // 1
+                try db.execute(sql: "INSERT INTO b VALUES (1)")  // -
+                try db.execute(sql: "INSERT INTO b VALUES (1)")  // -
+                try db.execute(sql: "UPDATE source SET name = 'b'")  // 2
+                try db.execute(sql: "INSERT INTO a VALUES (1)")  // -
+                try db.execute(sql: "INSERT INTO b VALUES (1)")  // 3
             }
-            
-            waitForExpectations(timeout: 1, handler: nil)
+
+            wait(for: [notificationExpectation], timeout: 1)
             XCTAssertEqual(resultsMutex.load(), [0, 1, 2, 3])
-            
-            XCTAssertEqual(regionsMutex.load().map(\.description), [
-                "a(value),source(name)",
-                "b(value),source(name)"])
+
+            XCTAssertEqual(
+                regionsMutex.load().map(\.description),
+                [
+                    "a(value),source(name)",
+                    "b(value),source(name)",
+                ])
         }
     }
-    
+
     func testVaryingRegionTrackingAsyncScheduling() throws {
         let dbQueue = try makeDatabaseQueue()
         try dbQueue.write {
-            try $0.execute(sql: """
-                CREATE TABLE source(name TEXT);
-                INSERT INTO source VALUES ('a');
-                CREATE TABLE a(value INTEGER);
-                CREATE TABLE b(value INTEGER);
-                """)
+            try $0.execute(
+                sql: """
+                    CREATE TABLE source(name TEXT);
+                    INSERT INTO source VALUES ('a');
+                    CREATE TABLE a(value INTEGER);
+                    CREATE TABLE b(value INTEGER);
+                    """)
         }
-        
+
         let resultsMutex: Mutex<[Int]> = Mutex([])
         let notificationExpectation = expectation(description: "notification")
         notificationExpectation.assertForOverFulfill = true
         notificationExpectation.expectedFulfillmentCount = 4
-        
+
         let regionsMutex: Mutex<[DatabaseRegion]> = Mutex([])
-        let observation = ValueObservation
+        let observation =
+            ValueObservation
             .tracking { db -> Int in
                 let table = try String.fetchOne(db, sql: "SELECT name FROM source")!
                 return try Int.fetchOne(db, sql: "SELECT IFNULL(SUM(value), 0) FROM \(table)")!
             }
-            .handleEvents(willTrackRegion: { region in
-                regionsMutex.withLock { $0.append(region) }
-            })
-        
+            .handleEvents(willTrackRegion: { region in regionsMutex.withLock { $0.append(region) } }
+            )
+
         let observer = observation.start(
             in: dbQueue,
             scheduling: .async(onQueue: .main),
@@ -205,24 +208,27 @@ class ValueObservationRegionRecordingTests: GRDBTestCase {
             onChange: { count in
                 resultsMutex.withLock { $0.append(count) }
                 notificationExpectation.fulfill()
-        })
-        
+            })
+
         try withExtendedLifetime(observer) {
             try dbQueue.inDatabase { db in
-                try db.execute(sql: "INSERT INTO a VALUES (1)") // 1
-                try db.execute(sql: "INSERT INTO b VALUES (1)") // -
-                try db.execute(sql: "INSERT INTO b VALUES (1)") // -
-                try db.execute(sql: "UPDATE source SET name = 'b'") // 2
-                try db.execute(sql: "INSERT INTO a VALUES (1)") // -
-                try db.execute(sql: "INSERT INTO b VALUES (1)") // 3
+                try db.execute(sql: "INSERT INTO a VALUES (1)")  // 1
+                try db.execute(sql: "INSERT INTO b VALUES (1)")  // -
+                try db.execute(sql: "INSERT INTO b VALUES (1)")  // -
+                try db.execute(sql: "UPDATE source SET name = 'b'")  // 2
+                try db.execute(sql: "INSERT INTO a VALUES (1)")  // -
+                try db.execute(sql: "INSERT INTO b VALUES (1)")  // 3
             }
-            
-            waitForExpectations(timeout: 1, handler: nil)
+
+            wait(for: [notificationExpectation], timeout: 1)
             XCTAssertEqual(resultsMutex.load(), [0, 1, 2, 3])
-            
-            XCTAssertEqual(regionsMutex.load().map(\.description), [
-                "a(value),source(name)",
-                "b(value),source(name)"])
+
+            XCTAssertEqual(
+                regionsMutex.load().map(\.description),
+                [
+                    "a(value),source(name)",
+                    "b(value),source(name)",
+                ])
         }
     }
 }

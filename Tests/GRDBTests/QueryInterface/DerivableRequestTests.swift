@@ -1,5 +1,5 @@
-import XCTest
 import GRDB
+import XCTest
 
 private struct Author: FetchableRecord, PersistableRecord, Codable {
     var id: Int64
@@ -11,16 +11,16 @@ private struct Author: FetchableRecord, PersistableRecord, Codable {
             .compactMap { $0 }
             .joined(separator: " ")
     }
-    
+
     static let databaseTableName = "author"
     static let books = hasMany(Book.self)
-    
+
     enum Columns {
         static let firstName = Column(CodingKeys.firstName)
         static let lastName = Column(CodingKeys.lastName)
         static let country = Column(CodingKeys.country)
     }
-    
+
     var books: QueryInterfaceRequest<Book> { request(for: Author.books) }
 }
 
@@ -28,28 +28,28 @@ private struct Book: FetchableRecord, PersistableRecord, Codable {
     var id: Int64
     var authorId: Int64
     var title: String
-    
+
     static let databaseTableName = "book"
     static let author = belongsTo(Author.self)
     static let bookFts4 = hasOne(BookFts4.self, using: ForeignKey([.rowID]))
     #if SQLITE_ENABLE_FTS5
     static let bookFts5 = hasOne(BookFts5.self, using: ForeignKey([.rowID]))
     #endif
-    
+
     enum Columns {
         static let title = Column(CodingKeys.title)
     }
-    
+
     var author: QueryInterfaceRequest<Author> { request(for: Book.author) }
 }
 
-private struct BookFts4: TableRecord { }
+private struct BookFts4: TableRecord {}
 
 #if SQLITE_ENABLE_FTS5
-private struct BookFts5: TableRecord { }
+private struct BookFts5: TableRecord {}
 #endif
 
-private var libraryMigrator: DatabaseMigrator = {
+private let libraryMigrator: DatabaseMigrator = {
     var migrator = DatabaseMigrator()
     migrator.registerMigration("library") { db in
         try db.create(table: "author") { t in
@@ -86,50 +86,46 @@ private var libraryMigrator: DatabaseMigrator = {
 // Define DerivableRequest extensions
 extension DerivableRequest<Author> {
     // SelectionRequest
-    func selectCountry() -> Self {
-        select { $0.country }
-    }
-    
+    func selectCountry() -> Self { select { $0.country } }
+
     // FilteredRequest
-    func filter(country: String) -> Self {
-        filter { $0.country == country }
-    }
-    
+    func filter(country: String) -> Self { filter { $0.country == country } }
+
     // OrderedRequest
     func orderByFullName() -> Self {
-        order { [
-            $0.lastName.collating(.localizedCaseInsensitiveCompare),
-            $0.firstName.collating(.localizedCaseInsensitiveCompare),
-        ] }
+        order {
+            [
+                $0.lastName.collating(.localizedCaseInsensitiveCompare),
+                $0.firstName.collating(.localizedCaseInsensitiveCompare),
+            ]
+        }
     }
 }
 
 extension DerivableRequest<Book> {
     // OrderedRequest
-    func orderByTitle() -> Self {
-        order { $0.title.collating(.localizedCaseInsensitiveCompare) }
-    }
-    
+    func orderByTitle() -> Self { order { $0.title.collating(.localizedCaseInsensitiveCompare) } }
+
     // JoinableRequest
     func filter(authorCountry: String) -> Self {
         joining(required: Book.author.filter(country: authorCountry))
     }
-    
+
     // TableRequest & FilteredRequest
     func filter(id: Int) -> Self { filter(key: id) }
-    
+
     // TableRequest & FilteredRequest
     func matchingFts4(_ pattern: FTS3Pattern?) -> Self {
         joining(required: Book.bookFts4.matching(pattern))
     }
-    
+
     #if SQLITE_ENABLE_FTS5
     // TableRequest & FilteredRequest
     func matchingFts5(_ pattern: FTS3Pattern?) -> Self {
         joining(required: Book.bookFts5.matching(pattern))
     }
     #endif
-    
+
     // TableRequest & OrderedRequest
     func orderById() -> Self { orderByPrimaryKey() }
 }
@@ -146,7 +142,7 @@ class DerivableRequestTests: GRDBTestCase {
             XCTAssertEqual(arguments, ["FR"])
         }
     }
-    
+
     func testNone() throws {
         let dbQueue = try makeDatabaseQueue()
         try libraryMigrator.migrate(dbQueue)
@@ -158,7 +154,7 @@ class DerivableRequestTests: GRDBTestCase {
             XCTAssertEqual(arguments, ["FR", false])
         }
     }
-    
+
     func testFilteredRequest() throws {
         let dbQueue = try makeDatabaseQueue()
         try libraryMigrator.migrate(dbQueue)
@@ -169,7 +165,7 @@ class DerivableRequestTests: GRDBTestCase {
                 .fetchAll(db)
                 .map(\.fullName)
             XCTAssertEqual(frenchAuthorNames, ["Marcel Proust"])
-            
+
             // ... for two requests (2)
             let frenchBookTitles = try Book
                 .joining(required: Book.author.filter(country: "FR"))
@@ -179,17 +175,19 @@ class DerivableRequestTests: GRDBTestCase {
             XCTAssertEqual(frenchBookTitles, ["Du côté de chez Swann"])
         }
     }
-    
+
     func testOrderedRequest() throws {
         let dbQueue = try makeDatabaseQueue()
         try libraryMigrator.migrate(dbQueue)
         try dbQueue.inDatabase { db in
-            try db.create(view: "authorView", as: Author.select(
-                .allColumns,
-                [Column("firstName"), Column("lastName")]
-                    .joined(operator: .concat)
-                    .forKey("fullName")))
-            
+            try db.create(
+                view: "authorView",
+                as: Author.select(
+                    .allColumns,
+                    [Column("firstName"), Column("lastName")]
+                        .joined(operator: .concat)
+                        .forKey("fullName")))
+
             // ... for one table
             clearSQLQueries()
             let authorNames = try Author.all()
@@ -197,12 +195,14 @@ class DerivableRequestTests: GRDBTestCase {
                 .fetchAll(db)
                 .map(\.fullName)
             XCTAssertEqual(authorNames, ["Herman Melville", "Marcel Proust"])
-            XCTAssertEqual(lastSQLQuery, """
+            XCTAssertEqual(
+                lastSQLQuery,
+                """
                 SELECT * FROM "author" \
                 ORDER BY "lastName" COLLATE swiftLocalizedCaseInsensitiveCompare, \
                 "firstName" COLLATE swiftLocalizedCaseInsensitiveCompare
                 """)
-            
+
             clearSQLQueries()
             let reversedAuthorNames = try Author.all()
                 .orderByFullName()
@@ -210,84 +210,110 @@ class DerivableRequestTests: GRDBTestCase {
                 .fetchAll(db)
                 .map(\.fullName)
             XCTAssertEqual(reversedAuthorNames, ["Marcel Proust", "Herman Melville"])
-            XCTAssertEqual(lastSQLQuery, """
+            XCTAssertEqual(
+                lastSQLQuery,
+                """
                 SELECT * FROM "author" \
                 ORDER BY "lastName" COLLATE swiftLocalizedCaseInsensitiveCompare DESC, \
                 "firstName" COLLATE swiftLocalizedCaseInsensitiveCompare DESC
                 """)
-            
+
             clearSQLQueries()
-            _ /* unorderedAuthors */ = try Author.all()
+            _ /* unorderedAuthors */
+            = try Author.all()
                 .orderByFullName()
                 .unordered()
                 .fetchAll(db)
-            XCTAssertEqual(lastSQLQuery, """
+            XCTAssertEqual(
+                lastSQLQuery,
+                """
                 SELECT * FROM "author"
                 """)
-            
+
             clearSQLQueries()
-            _ /* stableOrderAuthors */ = try Author.all()
+            _ /* stableOrderAuthors */
+            = try Author.all()
                 .withStableOrder()
                 .fetchAll(db)
-            XCTAssertEqual(lastSQLQuery, """
+            XCTAssertEqual(
+                lastSQLQuery,
+                """
                 SELECT * FROM "author" ORDER BY "id"
                 """)
-            
+
             clearSQLQueries()
-            _ /* stableOrderAuthors */ = try Author.all()
+            _ /* stableOrderAuthors */
+            = try Author.all()
                 .orderByFullName()
                 .withStableOrder()
                 .fetchAll(db)
-            XCTAssertEqual(lastSQLQuery, """
+            XCTAssertEqual(
+                lastSQLQuery,
+                """
                 SELECT * FROM "author" ORDER BY "lastName" COLLATE swiftLocalizedCaseInsensitiveCompare, "firstName" COLLATE swiftLocalizedCaseInsensitiveCompare, "id"
                 """)
-            
+
             // ... for one view
             clearSQLQueries()
-            _ /* authorViewNames */ = try Table("authorView").all()
+            _ /* authorViewNames */
+            = try Table("authorView").all()
                 .order(Column("fullName"))
                 .fetchAll(db)
-            XCTAssertEqual(lastSQLQuery, """
+            XCTAssertEqual(
+                lastSQLQuery,
+                """
                 SELECT * FROM "authorView" \
                 ORDER BY "fullName"
                 """)
-            
+
             clearSQLQueries()
-            _ /* reversedAuthorViewNames */ = try Table("authorView").all()
+            _ /* reversedAuthorViewNames */
+            = try Table("authorView").all()
                 .order(Column("fullName"))
                 .reversed()
                 .fetchAll(db)
-            XCTAssertEqual(lastSQLQuery, """
+            XCTAssertEqual(
+                lastSQLQuery,
+                """
                 SELECT * FROM "authorView" \
                 ORDER BY "fullName" DESC
                 """)
-            
+
             clearSQLQueries()
-            _ /* unorderedAuthorViews */ = try Table("authorView").all()
+            _ /* unorderedAuthorViews */
+            = try Table("authorView").all()
                 .order(Column("fullName"))
                 .unordered()
                 .fetchAll(db)
-            XCTAssertEqual(lastSQLQuery, """
+            XCTAssertEqual(
+                lastSQLQuery,
+                """
                 SELECT * FROM "authorView"
                 """)
-            
+
             clearSQLQueries()
-            _ /* stableOrderAuthorViews */ = try Table("authorView").all()
+            _ /* stableOrderAuthorViews */
+            = try Table("authorView").all()
                 .withStableOrder()
                 .fetchAll(db)
-            XCTAssertEqual(lastSQLQuery, """
+            XCTAssertEqual(
+                lastSQLQuery,
+                """
                 SELECT * FROM "authorView" ORDER BY 1, 2, 3, 4, 5
                 """)
-            
+
             clearSQLQueries()
-            _ /* stableOrderAuthorViews */ = try Table("authorView").all()
+            _ /* stableOrderAuthorViews */
+            = try Table("authorView").all()
                 .order(Column("fullName"))
                 .withStableOrder()
                 .fetchAll(db)
-            XCTAssertEqual(lastSQLQuery, """
+            XCTAssertEqual(
+                lastSQLQuery,
+                """
                 SELECT * FROM "authorView" ORDER BY "fullName", 1, 2, 3, 4, 5
                 """)
-            
+
             // ... for two tables (2)
             clearSQLQueries()
             let bookTitles = try Book
@@ -296,7 +322,9 @@ class DerivableRequestTests: GRDBTestCase {
                 .fetchAll(db)
                 .map(\.title)
             XCTAssertEqual(bookTitles, ["Du côté de chez Swann", "Moby-Dick"])
-            XCTAssertEqual(lastSQLQuery, """
+            XCTAssertEqual(
+                lastSQLQuery,
+                """
                 SELECT "book".* FROM "book" \
                 JOIN "author" ON "author"."id" = "book"."authorId" \
                 ORDER BY \
@@ -304,7 +332,7 @@ class DerivableRequestTests: GRDBTestCase {
                 "author"."lastName" COLLATE swiftLocalizedCaseInsensitiveCompare, \
                 "author"."firstName" COLLATE swiftLocalizedCaseInsensitiveCompare
                 """)
-            
+
             clearSQLQueries()
             let reversedBookTitles = try Book
                 .joining(required: Book.author.orderByFullName())
@@ -313,7 +341,9 @@ class DerivableRequestTests: GRDBTestCase {
                 .fetchAll(db)
                 .map(\.title)
             XCTAssertEqual(reversedBookTitles, ["Moby-Dick", "Du côté de chez Swann"])
-            XCTAssertEqual(lastSQLQuery, """
+            XCTAssertEqual(
+                lastSQLQuery,
+                """
                 SELECT "book".* FROM "book" \
                 JOIN "author" ON "author"."id" = "book"."authorId" \
                 ORDER BY \
@@ -321,25 +351,31 @@ class DerivableRequestTests: GRDBTestCase {
                 "author"."lastName" COLLATE swiftLocalizedCaseInsensitiveCompare DESC, \
                 "author"."firstName" COLLATE swiftLocalizedCaseInsensitiveCompare DESC
                 """)
-            
+
             clearSQLQueries()
-            _ /* unorderedBooks */ = try Book
+            _ /* unorderedBooks */
+            = try Book
                 .joining(required: Book.author.orderByFullName())
                 .orderByTitle()
                 .unordered()
                 .fetchAll(db)
-            XCTAssertEqual(lastSQLQuery, """
+            XCTAssertEqual(
+                lastSQLQuery,
+                """
                 SELECT "book".* FROM "book" \
                 JOIN "author" ON "author"."id" = "book"."authorId"
                 """)
-            
+
             clearSQLQueries()
-            _ /* stableOrderBooks */ = try Book
+            _ /* stableOrderBooks */
+            = try Book
                 .joining(required: Book.author.orderByFullName())
                 .orderByTitle()
                 .withStableOrder()
                 .fetchAll(db)
-            XCTAssertEqual(lastSQLQuery, """
+            XCTAssertEqual(
+                lastSQLQuery,
+                """
                 SELECT "book".* FROM "book" \
                 JOIN "author" ON "author"."id" = "book"."authorId" \
                 ORDER BY \
@@ -351,7 +387,7 @@ class DerivableRequestTests: GRDBTestCase {
                 """)
         }
     }
-    
+
     func testSelectionRequest() throws {
         let dbQueue = try makeDatabaseQueue()
         try libraryMigrator.migrate(dbQueue)
@@ -361,16 +397,20 @@ class DerivableRequestTests: GRDBTestCase {
                 let request = Author.all().selectCountry()
                 let authorCountries = try Set(String.fetchAll(db, request))
                 XCTAssertEqual(authorCountries, ["FR", "US"])
-                XCTAssertEqual(lastSQLQuery, """
+                XCTAssertEqual(
+                    lastSQLQuery,
+                    """
                     SELECT "country" FROM "author"
                     """)
             }
-            
+
             do {
                 clearSQLQueries()
                 let request = Book.including(required: Book.author.selectCountry())
                 _ = try Row.fetchAll(db, request)
-                XCTAssertEqual(lastSQLQuery, """
+                XCTAssertEqual(
+                    lastSQLQuery,
+                    """
                     SELECT "book".*, "author"."country" \
                     FROM "book" \
                     JOIN "author" ON "author"."id" = "book"."authorId"
@@ -378,7 +418,7 @@ class DerivableRequestTests: GRDBTestCase {
             }
         }
     }
-    
+
     func testJoinableRequest() throws {
         let dbQueue = try makeDatabaseQueue()
         try libraryMigrator.migrate(dbQueue)
@@ -391,14 +431,16 @@ class DerivableRequestTests: GRDBTestCase {
                     .fetchAll(db)
                     .map(\.title)
                 XCTAssertEqual(frenchBookTitles, ["Du côté de chez Swann"])
-                XCTAssertEqual(lastSQLQuery, """
+                XCTAssertEqual(
+                    lastSQLQuery,
+                    """
                     SELECT "book".* \
                     FROM "book" \
                     JOIN "author" ON ("author"."id" = "book"."authorId") AND ("author"."country" = 'FR') \
                     ORDER BY "book"."title"
                     """)
             }
-            
+
             do {
                 clearSQLQueries()
                 let frenchAuthorFullNames = try Author
@@ -407,7 +449,9 @@ class DerivableRequestTests: GRDBTestCase {
                     .fetchAll(db)
                     .map(\.fullName)
                 XCTAssertEqual(frenchAuthorFullNames, ["Marcel Proust"])
-                XCTAssertEqual(lastSQLQuery, """
+                XCTAssertEqual(
+                    lastSQLQuery,
+                    """
                     SELECT "author1".* \
                     FROM "author" "author1" \
                     JOIN "book" ON "book"."authorId" = "author1"."id" \
@@ -417,7 +461,7 @@ class DerivableRequestTests: GRDBTestCase {
             }
         }
     }
-    
+
     func testTableRequestFilteredRequest() throws {
         let dbQueue = try makeDatabaseQueue()
         try libraryMigrator.migrate(dbQueue)
@@ -429,22 +473,26 @@ class DerivableRequestTests: GRDBTestCase {
                     .fetchOne(db)
                     .map(\.title)
                 XCTAssertEqual(title, "Du côté de chez Swann")
-                XCTAssertEqual(lastSQLQuery, """
+                XCTAssertEqual(
+                    lastSQLQuery,
+                    """
                     SELECT * FROM "book" WHERE "id" = 2
                     """)
-                
+
                 let fullName = try Author
                     .joining(required: Author.books.filter(id: 2))
                     .fetchOne(db)
                     .map(\.fullName)
                 XCTAssertEqual(fullName, "Marcel Proust")
-                XCTAssertEqual(lastSQLQuery, """
+                XCTAssertEqual(
+                    lastSQLQuery,
+                    """
                     SELECT "author".* FROM "author" \
                     JOIN "book" ON ("book"."authorId" = "author"."id") AND ("book"."id" = 2) \
                     LIMIT 1
                     """)
             }
-            
+
             // matchingFts4
             do {
                 clearSQLQueries()
@@ -453,26 +501,29 @@ class DerivableRequestTests: GRDBTestCase {
                     .fetchOne(db)
                     .map(\.title)
                 XCTAssertEqual(title, "Moby-Dick")
-                XCTAssert(sqlQueries.contains("""
+                XCTAssert(sqlQueries.contains(
+                    """
                     SELECT "book".* FROM "book" \
                     JOIN "bookFts4" ON ("bookFts4"."rowid" = "book"."id") AND ("bookFts4" MATCH 'moby dick') \
                     LIMIT 1
                     """))
-                
+
                 clearSQLQueries()
                 let fullName = try Author
-                    .joining(required: Author.books.matchingFts4(FTS3Pattern(rawPattern: "moby dick")))
+                    .joining(required: Author.books.matchingFts4(FTS3Pattern(
+                        rawPattern: "moby dick")))
                     .fetchOne(db)
                     .map(\.fullName)
                 XCTAssertEqual(fullName, "Herman Melville")
-                XCTAssert(sqlQueries.contains("""
+                XCTAssert(sqlQueries.contains(
+                    """
                     SELECT "author".* FROM "author" \
                     JOIN "book" ON "book"."authorId" = "author"."id" \
                     JOIN "bookFts4" ON ("bookFts4"."rowid" = "book"."id") AND ("bookFts4" MATCH 'moby dick') \
                     LIMIT 1
                     """))
             }
-            
+
             #if SQLITE_ENABLE_FTS5
             // matchingFts5
             do {
@@ -482,19 +533,22 @@ class DerivableRequestTests: GRDBTestCase {
                     .fetchOne(db)
                     .map(\.title)
                 XCTAssertEqual(title, "Du côté de chez Swann")
-                XCTAssert(sqlQueries.contains("""
+                XCTAssert(sqlQueries.contains(
+                    """
                     SELECT "book".* FROM "book" \
                     JOIN "bookFts5" ON ("bookFts5"."rowid" = "book"."id") AND ("bookFts5" MATCH 'cote swann') \
                     LIMIT 1
                     """))
-                
+
                 clearSQLQueries()
                 let fullName = try Author
-                    .joining(required: Author.books.matchingFts5(FTS3Pattern(rawPattern: "cote swann")))
+                    .joining(required: Author.books.matchingFts5(FTS3Pattern(
+                        rawPattern: "cote swann")))
                     .fetchOne(db)
                     .map(\.fullName)
                 XCTAssertEqual(fullName, "Marcel Proust")
-                XCTAssert(sqlQueries.contains("""
+                XCTAssert(sqlQueries.contains(
+                    """
                     SELECT "author".* FROM "author" \
                     JOIN "book" ON "book"."authorId" = "author"."id" \
                     JOIN "bookFts5" ON ("bookFts5"."rowid" = "book"."id") AND ("bookFts5" MATCH 'cote swann') \
@@ -502,7 +556,7 @@ class DerivableRequestTests: GRDBTestCase {
                     """))
             }
             #endif
-            
+
             // orderById
             do {
                 let titles = try Book.all()
@@ -510,16 +564,20 @@ class DerivableRequestTests: GRDBTestCase {
                     .fetchAll(db)
                     .map(\.title)
                 XCTAssertEqual(titles, ["Moby-Dick", "Du côté de chez Swann"])
-                XCTAssertEqual(lastSQLQuery, """
+                XCTAssertEqual(
+                    lastSQLQuery,
+                    """
                     SELECT * FROM "book" ORDER BY "id"
                     """)
-                
+
                 let fullNames = try Author
                     .joining(required: Author.books.orderById())
                     .fetchAll(db)
                     .map(\.fullName)
                 XCTAssertEqual(fullNames, ["Herman Melville", "Marcel Proust"])
-                XCTAssertEqual(lastSQLQuery, """
+                XCTAssertEqual(
+                    lastSQLQuery,
+                    """
                     SELECT "author".* FROM "author" \
                     JOIN "book" ON "book"."authorId" = "author"."id" ORDER BY "book"."id"
                     """)

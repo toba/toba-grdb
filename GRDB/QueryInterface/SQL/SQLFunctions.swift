@@ -21,8 +21,8 @@ public func abs(_ value: some SQLSpecificExpressible) -> SQLExpression {
 /// ```
 public func average(
     _ value: some SQLSpecificExpressible,
-    filter: (any SQLSpecificExpressible)? = nil)
--> SQLExpression {
+    filter: any SQLSpecificExpressible? = nil
+) -> SQLExpression {
     .aggregateFunction("AVG", [value.sqlExpression], filter: filter?.sqlExpression)
 }
 #else
@@ -34,14 +34,11 @@ public func average(
 /// // AVG(length) FILTER (WHERE length > 0)
 /// average(Column("length"), filter: Column("length") > 0)
 /// ```
-@available(iOS 14, macOS 10.16, tvOS 14, *) // SQLite 3.30+
 public func average(
     _ value: some SQLSpecificExpressible,
-    filter: some SQLSpecificExpressible)
--> SQLExpression {
-    .aggregateFunction(
-        "AVG", [value.sqlExpression],
-        filter: filter.sqlExpression)
+    filter: some SQLSpecificExpressible
+) -> SQLExpression {
+    .aggregateFunction("AVG", [value.sqlExpression], filter: filter.sqlExpression)
 }
 
 /// The `AVG` SQL aggregate function.
@@ -67,9 +64,10 @@ public func average(_ value: some SQLSpecificExpressible) -> SQLExpression {
 /// ```
 ///
 /// Related SQLite documentation: <https://www.sqlite.org/lang_expr.html#castexpr>
-public func cast(_ expression: some SQLSpecificExpressible, as storageClass: Database.StorageClass) -> SQLExpression {
-    .cast(expression.sqlExpression, as: storageClass)
-}
+public func cast(
+    _ expression: some SQLSpecificExpressible,
+    as storageClass: Database.StorageClass
+) -> SQLExpression { .cast(expression.sqlExpression, as: storageClass) }
 
 /// The `COALESCE` SQL function.
 ///
@@ -80,21 +78,16 @@ public func cast(_ expression: some SQLSpecificExpressible, as storageClass: Dat
 /// coalesce([Column("value1"), Column("value2"), ...])
 /// ```
 ///
-/// Unlike the SQL function, `coalesce` accepts any number of arguments.
-/// When `values` is empty, the result is `NULL`. When `values` contains a
-/// single value, the result is this value. `COALESCE` is used from
-/// two values upwards.
+/// Unlike the SQL function, `coalesce` accepts any number of arguments. When `values` is empty, the
+/// result is `NULL`. When `values` contains a single value, the result is this value. `COALESCE` is
+/// used from two values upwards.
 public func coalesce(_ values: some Collection<any SQLSpecificExpressible>) -> SQLExpression {
-    // SQLite COALESCE wants at least two arguments.
-    // There is no reason to apply the same limitation.
-    guard let value = values.first else {
-        return .null
-    }
-    if values.count > 1 {
-        return .function("COALESCE", values.map { $0.sqlExpression })
-    } else {
-        return value.sqlExpression
-    }
+    // SQLite COALESCE wants at least two arguments. There is no reason to apply the same
+    // limitation.
+    guard let value = values.first else { return .null }
+    return values.count > 1
+        ? .function("COALESCE", values.map { $0.sqlExpression })
+        : value.sqlExpression
 }
 
 /// The `COUNT` SQL function.
@@ -121,7 +114,7 @@ public func count(distinct value: some SQLSpecificExpressible) -> SQLExpression 
     .countDistinct(value.sqlExpression)
 }
 
-extension SQLSpecificExpressible {
+public extension SQLSpecificExpressible {
     /// The `IFNULL` SQL function.
     ///
     /// For example:
@@ -130,7 +123,7 @@ extension SQLSpecificExpressible {
     /// // IFNULL(name, 'Anonymous')
     /// Column("name") ?? "Anonymous"
     /// ```
-    public static func ?? (lhs: Self, rhs: some SQLExpressible) -> SQLExpression {
+    static func ?? (lhs: Self, rhs: some SQLExpressible) -> SQLExpression {
         .function("IFNULL", [lhs.sqlExpression, rhs.sqlExpression])
     }
 }
@@ -160,7 +153,8 @@ public func max(
     _ value2: any SQLExpressible,
     _ values: any SQLExpressible...
 ) -> SQLExpression {
-    .simpleFunction("MAX", [value1.sqlExpression, value2.sqlExpression] + values.map(\.sqlExpression))
+    .simpleFunction(
+        "MAX", [value1.sqlExpression, value2.sqlExpression] + values.map(\.sqlExpression))
 }
 
 #if GRDBCUSTOMSQLITE || SQLITE_HAS_CODEC
@@ -174,8 +168,8 @@ public func max(
 /// ```
 public func max(
     _ value: some SQLSpecificExpressible,
-    filter: (any SQLSpecificExpressible)? = nil)
--> SQLExpression {
+    filter: any SQLSpecificExpressible? = nil
+) -> SQLExpression {
     .aggregateFunction("MAX", [value.sqlExpression], filter: filter?.sqlExpression)
 }
 #else
@@ -187,11 +181,10 @@ public func max(
 /// // MAX(score) FILTER (WHERE score < 0)
 /// max(Column("score"), filter: Column("score") < 0)
 /// ```
-@available(iOS 14, macOS 10.16, tvOS 14, *) // SQLite 3.30+
 public func max(
     _ value: some SQLSpecificExpressible,
-    filter: some SQLSpecificExpressible)
--> SQLExpression {
+    filter: some SQLSpecificExpressible
+) -> SQLExpression {
     .aggregateFunction("MAX", [value.sqlExpression], filter: filter.sqlExpression)
 }
 
@@ -221,7 +214,8 @@ public func min(
     _ value2: any SQLExpressible,
     _ values: any SQLExpressible...
 ) -> SQLExpression {
-    .simpleFunction("MIN", [value1.sqlExpression, value2.sqlExpression] + values.map(\.sqlExpression))
+    .simpleFunction(
+        "MIN", [value1.sqlExpression, value2.sqlExpression] + values.map(\.sqlExpression))
 }
 
 #if GRDBCUSTOMSQLITE || SQLITE_HAS_CODEC
@@ -235,8 +229,8 @@ public func min(
 /// ```
 public func min(
     _ value: some SQLSpecificExpressible,
-    filter: (any SQLSpecificExpressible)? = nil) 
--> SQLExpression {
+    filter: any SQLSpecificExpressible? = nil
+) -> SQLExpression {
     .aggregateFunction("MIN", [value.sqlExpression], filter: filter?.sqlExpression)
 }
 #else
@@ -248,11 +242,10 @@ public func min(
 /// // MIN(score) FILTER (WHERE score > 0)
 /// min(Column("score"), filter: Column("score") > 0)
 /// ```
-@available(iOS 14, macOS 10.16, tvOS 14, *) // SQLite 3.30+
 public func min(
     _ value: some SQLSpecificExpressible,
-    filter: some SQLSpecificExpressible)
--> SQLExpression {
+    filter: some SQLSpecificExpressible
+) -> SQLExpression {
     .aggregateFunction("MIN", [value.sqlExpression], filter: filter.sqlExpression)
 }
 
@@ -284,10 +277,9 @@ public func min(_ value: some SQLSpecificExpressible) -> SQLExpression {
 /// Related SQLite documentation: <https://www.sqlite.org/lang_aggfunc.html#sumunc>.
 public func sum(
     _ value: some SQLSpecificExpressible,
-    orderBy ordering: (any SQLOrderingTerm)? = nil,
-    filter: (any SQLSpecificExpressible)? = nil)
--> SQLExpression
-{
+    orderBy ordering: any SQLOrderingTerm? = nil,
+    filter: any SQLSpecificExpressible? = nil
+) -> SQLExpression {
     .aggregateFunction(
         "SUM", [value.sqlExpression],
         ordering: ordering?.sqlOrdering,
@@ -306,14 +298,11 @@ public func sum(
 /// See also ``total(_:)``.
 ///
 /// Related SQLite documentation: <https://www.sqlite.org/lang_aggfunc.html#sumunc>.
-@available(iOS 14, macOS 10.16, tvOS 14, *) // SQLite 3.30+
 public func sum(
     _ value: some SQLSpecificExpressible,
-    filter: some SQLSpecificExpressible)
--> SQLExpression {
-    .aggregateFunction(
-        "SUM", [value.sqlExpression],
-        filter: filter.sqlExpression)
+    filter: some SQLSpecificExpressible
+) -> SQLExpression {
+    .aggregateFunction("SUM", [value.sqlExpression], filter: filter.sqlExpression)
 }
 
 /// The `SUM` SQL aggregate function.
@@ -348,10 +337,9 @@ public func sum(_ value: some SQLSpecificExpressible) -> SQLExpression {
 /// Related SQLite documentation: <https://www.sqlite.org/lang_aggfunc.html#sumunc>.
 public func total(
     _ value: some SQLSpecificExpressible,
-    orderBy ordering: (any SQLOrderingTerm)? = nil,
-    filter: (any SQLSpecificExpressible)? = nil)
--> SQLExpression
-{
+    orderBy ordering: any SQLOrderingTerm? = nil,
+    filter: any SQLSpecificExpressible? = nil
+) -> SQLExpression {
     .aggregateFunction(
         "TOTAL", [value.sqlExpression],
         ordering: ordering?.sqlOrdering,
@@ -370,14 +358,11 @@ public func total(
 /// See also ``total(_:)``.
 ///
 /// Related SQLite documentation: <https://www.sqlite.org/lang_aggfunc.html#sumunc>.
-@available(iOS 14, macOS 10.16, tvOS 14, *) // SQLite 3.30+
 public func total(
     _ value: some SQLSpecificExpressible,
-    filter: some SQLSpecificExpressible)
--> SQLExpression {
-    .aggregateFunction(
-        "TOTAL", [value.sqlExpression],
-        filter: filter.sqlExpression)
+    filter: some SQLSpecificExpressible
+) -> SQLExpression {
+    .aggregateFunction("TOTAL", [value.sqlExpression], filter: filter.sqlExpression)
 }
 
 /// The `TOTAL` SQL aggregate function.
@@ -399,80 +384,62 @@ public func total(_ value: some SQLSpecificExpressible) -> SQLExpression {
 
 // MARK: - String functions
 
-extension SQLSpecificExpressible {
-    /// An SQL expression that calls the Foundation
-    /// `String.capitalized` property.
+public extension SQLSpecificExpressible {
+    /// An SQL expression that calls the Foundation `String.capitalized` property.
     ///
     /// For example:
     ///
     /// ```swift
     /// Column("name").capitalized
     /// ```
-    public var capitalized: SQLExpression {
-        DatabaseFunction.capitalize(sqlExpression)
-    }
-    
-    /// An SQL expression that calls the Swift
-    /// `String.lowercased()` method.
+    var capitalized: SQLExpression { DatabaseFunction.capitalize(sqlExpression) }
+
+    /// An SQL expression that calls the Swift `String.lowercased()` method.
     ///
     /// For example:
     ///
     /// ```swift
     /// Column("name").lowercased
     /// ```
-    public var lowercased: SQLExpression {
-        DatabaseFunction.lowercase(sqlExpression)
-    }
-    
-    /// An SQL expression that calls the Swift
-    /// `String.uppercased()` method.
+    var lowercased: SQLExpression { DatabaseFunction.lowercase(sqlExpression) }
+
+    /// An SQL expression that calls the Swift `String.uppercased()` method.
     ///
     /// For example:
     ///
     /// ```swift
     /// Column("name").uppercased
     /// ```
-    public var uppercased: SQLExpression {
-        DatabaseFunction.uppercase(sqlExpression)
-    }
+    var uppercased: SQLExpression { DatabaseFunction.uppercase(sqlExpression) }
 }
 
-extension SQLSpecificExpressible {
-    /// An SQL expression that calls the Foundation
-    /// `String.localizedCapitalized` property.
+public extension SQLSpecificExpressible {
+    /// An SQL expression that calls the Foundation `String.localizedCapitalized` property.
     ///
     /// For example:
     ///
     /// ```swift
     /// Column("name").localizedCapitalized
     /// ```
-    public var localizedCapitalized: SQLExpression {
-        DatabaseFunction.localizedCapitalize(sqlExpression)
-    }
-    
-    /// An SQL expression that calls the Foundation
-    /// `String.localizedLowercase` property.
+    var localizedCapitalized: SQLExpression { DatabaseFunction.localizedCapitalize(sqlExpression) }
+
+    /// An SQL expression that calls the Foundation `String.localizedLowercase` property.
     ///
     /// For example:
     ///
     /// ```swift
     /// Column("name").localizedLowercased
     /// ```
-    public var localizedLowercased: SQLExpression {
-        DatabaseFunction.localizedLowercase(sqlExpression)
-    }
-    
-    /// An SQL expression that calls the Foundation
-    /// `String.localizedUppercase` property.
+    var localizedLowercased: SQLExpression { DatabaseFunction.localizedLowercase(sqlExpression) }
+
+    /// An SQL expression that calls the Foundation `String.localizedUppercase` property.
     ///
     /// For example:
     ///
     /// ```swift
     /// Column("name").localizedUppercased
     /// ```
-    public var localizedUppercased: SQLExpression {
-        DatabaseFunction.localizedUppercase(sqlExpression)
-    }
+    var localizedUppercased: SQLExpression { DatabaseFunction.localizedUppercase(sqlExpression) }
 }
 
 // MARK: - Date functions
@@ -483,75 +450,60 @@ extension SQLSpecificExpressible {
 public enum SQLDateModifier: SQLSpecificExpressible, Sendable {
     /// Adds the specified amount of seconds
     case second(Double)
-    
+
     /// Adds the specified amount of minutes
     case minute(Int)
-    
+
     /// Adds the specified amount of hours
     case hour(Int)
-    
+
     /// Adds the specified amount of days
     case day(Int)
-    
+
     /// Adds the specified amount of months
     case month(Int)
-    
+
     /// Adds the specified amount of years
     case year(Int)
-    
+
     /// Shifts the date backwards to the beginning of the current day
     case startOfDay
-    
+
     /// Shifts the date backwards to the beginning of the current month
     case startOfMonth
-    
+
     /// Shifts the date backwards to the beginning of the current year
     case startOfYear
-    
+
     /// See <https://www.sqlite.org/lang_datefunc.html>
     case weekday(Int)
-    
+
     /// See <https://www.sqlite.org/lang_datefunc.html>
     case unixEpoch
-    
+
     /// See <https://www.sqlite.org/lang_datefunc.html>
     case localTime
-    
+
     /// See <https://www.sqlite.org/lang_datefunc.html>
     case utc
-    
-    public var sqlExpression: SQLExpression {
-        rawValue.sqlExpression
-    }
-    
+
+    public var sqlExpression: SQLExpression { rawValue.sqlExpression }
+
     var rawValue: String {
         switch self {
-        case let .day(value):
-            return "\(value) days"
-        case let .hour(value):
-            return "\(value) hours"
-        case let .minute(value):
-            return "\(value) minutes"
-        case let .second(value):
-            return "\(value) seconds"
-        case let .month(value):
-            return "\(value) months"
-        case let .year(value):
-            return "\(value) years"
-        case .startOfMonth:
-            return "start of month"
-        case .startOfYear:
-            return "start of year"
-        case .startOfDay:
-            return "start of day"
-        case let .weekday(value):
-            return "weekday \(value)"
-        case .unixEpoch:
-            return "unixepoch"
-        case .localTime:
-            return "localtime"
-        case .utc:
-            return "utc"
+            case let .day(value): "\(value) days"
+            case let .hour(value): "\(value) hours"
+            case let .minute(value): "\(value) minutes"
+            case let .second(value): "\(value) seconds"
+            case let .month(value): "\(value) months"
+            case let .year(value): "\(value) years"
+            case .startOfMonth: "start of month"
+            case .startOfYear: "start of year"
+            case .startOfDay: "start of day"
+            case let .weekday(value): "weekday \(value)"
+            case .unixEpoch: "unixepoch"
+            case .localTime: "localtime"
+            case .utc: "utc"
         }
     }
 }
@@ -569,7 +521,10 @@ public enum SQLDateModifier: SQLSpecificExpressible, Sendable {
 /// ```
 ///
 /// Related SQLite documentation: <https://www.sqlite.org/lang_datefunc.html>
-public func julianDay(_ value: some SQLSpecificExpressible, _ modifiers: SQLDateModifier...) -> SQLExpression {
+public func julianDay(
+    _ value: some SQLSpecificExpressible,
+    _ modifiers: SQLDateModifier...
+) -> SQLExpression {
     .function("JULIANDAY", [value.sqlExpression] + modifiers.map(\.sqlExpression))
 }
 
@@ -588,6 +543,7 @@ public func julianDay(_ value: some SQLSpecificExpressible, _ modifiers: SQLDate
 /// ```
 ///
 /// Related SQLite documentation:<https://www.sqlite.org/lang_datefunc.html>
-public func dateTime(_ value: some SQLSpecificExpressible, _ modifiers: SQLDateModifier...) -> SQLExpression {
-    .function("DATETIME", [value.sqlExpression] + modifiers.map(\.sqlExpression))
-}
+public func dateTime(
+    _ value: some SQLSpecificExpressible,
+    _ modifiers: SQLDateModifier...
+) -> SQLExpression { .function("DATETIME", [value.sqlExpression] + modifiers.map(\.sqlExpression)) }

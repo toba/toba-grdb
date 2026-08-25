@@ -144,7 +144,7 @@ class GRDBTestCase: XCTestCase {
         _sqlQueriesMutex.store([])
     }
     
-    func assertNoError(file: StaticString = #file, line: UInt = #line, _ test: () throws -> Void) {
+    func assertNoError(file: StaticString = #filePath, line: UInt = #line, _ test: () throws -> Void) {
         do {
             try test()
         } catch {
@@ -152,18 +152,18 @@ class GRDBTestCase: XCTestCase {
         }
     }
     
-    func assertDidExecute(sql: String, file: StaticString = #file, line: UInt = #line) {
+    func assertDidExecute(sql: String, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(sqlQueries.contains(sql), "Did not execute \(sql)", file: file, line: line)
     }
     
-    func assert(_ record: some EncodableRecord, isEncodedIn row: Row, file: StaticString = #file, line: UInt = #line) throws {
+    func assert(_ record: some EncodableRecord, isEncodedIn row: Row, file: StaticString = #filePath, line: UInt = #line) throws {
         let recordDict = try record.databaseDictionary
         let rowDict = Dictionary(row, uniquingKeysWith: { (left, _) in left })
         XCTAssertEqual(recordDict, rowDict, file: file, line: line)
     }
     
     // Compare SQL strings (ignoring leading and trailing white space and semicolons.
-    func assertEqualSQL(_ lhs: String, _ rhs: String, file: StaticString = #file, line: UInt = #line) {
+    func assertEqualSQL(_ lhs: String, _ rhs: String, file: StaticString = #filePath, line: UInt = #line) {
         // Trim white space and ";"
         let cs = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ";"))
         XCTAssertEqual(lhs.trimmingCharacters(in: cs), rhs.trimmingCharacters(in: cs), file: file, line: line)
@@ -174,7 +174,7 @@ class GRDBTestCase: XCTestCase {
         _ db: Database,
         _ request: some FetchRequest,
         _ sql: String,
-        file: StaticString = #file,
+        file: StaticString = #filePath,
         line: UInt = #line)
     throws
     {
@@ -187,7 +187,7 @@ class GRDBTestCase: XCTestCase {
         _ db: Database,
         _ expression: some SQLExpressible,
         _ sql: String,
-        file: StaticString = #file,
+        file: StaticString = #filePath,
         line: UInt = #line)
     throws
     {
@@ -200,7 +200,7 @@ class GRDBTestCase: XCTestCase {
         _ databaseReader: some DatabaseReader,
         _ request: some FetchRequest,
         _ sql: String,
-        file: StaticString = #file,
+        file: StaticString = #filePath,
         line: UInt = #line)
     throws
     {

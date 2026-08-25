@@ -12,20 +12,18 @@
 /// Related SQLite documentation: <https://www.sqlite.org/lang_altertable.html>
 public final class TableAlteration {
     let name: String
-    
+
     enum TableAlterationKind {
         case add(ColumnDefinition)
         case addColumnLiteral(SQL)
         case rename(old: String, new: String)
         case drop(String)
     }
-    
+
     var alterations: [TableAlterationKind] = []
-    
-    init(name: String) {
-        self.name = name
-    }
-    
+
+    init(name: String) { self.name = name }
+
     /// Appends a column.
     ///
     /// For example:
@@ -41,15 +39,14 @@ public final class TableAlteration {
     ///
     /// - parameter name: the column name.
     /// - parameter type: the column type.
-    /// - returns: An ColumnDefinition that allows you to refine the
-    ///   column definition.
+    /// - returns: An ColumnDefinition that allows you to refine the column definition.
     @discardableResult
     public func add(column name: String, _ type: Database.ColumnType? = nil) -> ColumnDefinition {
         let column = ColumnDefinition(name: name, type: type)
         alterations.append(.add(column))
         return column
     }
-    
+
     /// Appends a column.
     ///
     /// For example:
@@ -60,14 +57,12 @@ public final class TableAlteration {
     ///     t.addColumn(sql: "bonus integer")
     /// }
     /// ```
-    public func addColumn(sql: String) {
-        alterations.append(.addColumnLiteral(SQL(sql: sql)))
-    }
-    
+    public func addColumn(sql: String) { alterations.append(.addColumnLiteral(SQL(sql: sql))) }
+
     /// Appends a column.
     ///
-    /// ``SQL`` literals allow you to safely embed raw values in your SQL,
-    /// without any risk of syntax errors or SQL injection:
+    /// ``SQL`` literals allow you to safely embed raw values in your SQL, without any risk of
+    /// syntax errors or SQL injection:
     ///
     /// ```swift
     /// // ALTER TABLE player ADD COLUMN name TEXT DEFAULT 'Anonymous'
@@ -75,11 +70,9 @@ public final class TableAlteration {
     ///     t.addColumn(literal: "name TEXT DEFAULT \(defaultName)")
     /// }
     /// ```
-    public func addColumn(literal: SQL) {
-        alterations.append(.addColumnLiteral(literal))
-    }
-    
-#if GRDBCUSTOMSQLITE || SQLITE_HAS_CODEC
+    public func addColumn(literal: SQL) { alterations.append(.addColumnLiteral(literal)) }
+
+    #if GRDBCUSTOMSQLITE || SQLITE_HAS_CODEC
     /// Renames a column.
     ///
     /// For example:
@@ -97,7 +90,7 @@ public final class TableAlteration {
     public func rename(column name: String, to newName: String) {
         _rename(column: name, to: newName)
     }
-    
+
     /// Drops a column.
     ///
     /// For example:
@@ -111,10 +104,8 @@ public final class TableAlteration {
     /// Related SQLite documentation: <https://www.sqlite.org/lang_altertable.html>
     ///
     /// - Parameter name: the name of the column to drop.
-    public func drop(column name: String) {
-        _drop(column: name)
-    }
-#else
+    public func drop(column name: String) { _drop(column: name) }
+    #else
     /// Renames a column.
     ///
     /// For example:
@@ -125,9 +116,9 @@ public final class TableAlteration {
     /// }
     /// ```
     ///
-    /// Take care, when you rename **foreign keys** in <doc:Migrations>,
-    /// to run the migration with the ``DatabaseMigrator/ForeignKeyChecks/immediate``
-    /// foreign key checks, in order to avoid integrity failures:
+    /// Take care, when you rename **foreign keys** in <doc:Migrations>, to run the migration with
+    /// the ``DatabaseMigrator/ForeignKeyChecks/immediate`` foreign key checks, in order to avoid
+    /// integrity failures:
     ///
     /// ```swift
     /// // RECOMMENDED: rename foreign keys with immediate foreign key checks.
@@ -154,7 +145,7 @@ public final class TableAlteration {
     public func rename(column name: String, to newName: String) {
         _rename(column: name, to: newName)
     }
-    
+
     /// Drops a column.
     ///
     /// For example:
@@ -168,22 +159,17 @@ public final class TableAlteration {
     /// Related SQLite documentation: <https://www.sqlite.org/lang_altertable.html>
     ///
     /// - Parameter name: the name of the column to drop.
-    @available(iOS 15, macOS 12, tvOS 15, watchOS 8, *) // SQLite 3.35.0+
-    public func drop(column name: String) {
-        _drop(column: name)
-    }
-#endif
-    
+    public func drop(column name: String) { _drop(column: name) }
+    #endif
+
     private func _rename(column name: String, to newName: String) {
         alterations.append(.rename(old: name, new: newName))
     }
-    
-    private func _drop(column name: String) {
-        alterations.append(.drop(name))
-    }
+
+    private func _drop(column name: String) { alterations.append(.drop(name)) }
 }
 
-// Explicit non-conformance to Sendable: `TableAlteration` is a mutable
-// class and there is no known reason for making it thread-safe.
+// Explicit non-conformance to Sendable: `TableAlteration` is a mutable class and there is no known
+// reason for making it thread-safe.
 @available(*, unavailable)
-extension TableAlteration: Sendable { }
+extension TableAlteration: Sendable {}

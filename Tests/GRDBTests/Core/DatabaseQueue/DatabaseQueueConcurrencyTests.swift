@@ -1,53 +1,51 @@
-import XCTest
 import GRDB
+import XCTest
 
 class ConcurrencyTests: GRDBTestCase {
-    var busyCallback: Database.BusyCallback?
-    
+    // SQLite calls the busy handler on the thread that hit the lock, so the callback a test
+    // installs travels across a concurrency boundary.
+    let busyCallbackMutex = Mutex<Database.BusyCallback?>(nil)
+
     override func setUp() {
         super.setUp()
-        
-        self.busyCallback = nil
-        let busyCallback: Database.BusyCallback = { numberOfTries in
-            if let busyCallback = self.busyCallback {
-                return busyCallback(numberOfTries)
+
+        busyCallbackMutex.store(nil)
+        let busyCallback: Database.BusyCallback = { [busyCallbackMutex] numberOfTries in
+            if let busyCallback = busyCallbackMutex.load() {
+                busyCallback(numberOfTries)
             } else {
                 // Default give up
-                return false
+                false
             }
         }
-        
+
         dbConfiguration.busyMode = .callback(busyCallback)
     }
-    
+
     func testWrappedReadWrite() throws {
         let dbQueue = try makeDatabaseQueue()
         try dbQueue.inDatabase { db in
             try db.execute(sql: "CREATE TABLE items (id INTEGER PRIMARY KEY)")
             try db.execute(sql: "INSERT INTO items (id) VALUES (NULL)")
         }
-        let id = try dbQueue.inDatabase { db in
-            try Int.fetchOne(db, sql: "SELECT id FROM items")!
-        }
+        let id = try dbQueue.inDatabase { db in try Int.fetchOne(db, sql: "SELECT id FROM items")! }
         XCTAssertEqual(id, 1)
     }
 
     func testDeferredTransactionConcurrency() throws {
         let dbQueue1 = try makeDatabaseQueue(filename: "test.sqlite")
         #if GRDBCIPHER_USE_ENCRYPTION
-            // Work around SQLCipher bug when two connections are open to the
-            // same empty database: make sure the database is not empty before
-            // running this test
-            try dbQueue1.inDatabase { db in
-                try db.execute(sql: "CREATE TABLE SQLCipherWorkAround (foo INTEGER)")
-            }
+        // Work around SQLCipher bug when two connections are open to the same empty database:
+        // make sure the database is not empty before running this test
+        try dbQueue1.inDatabase { db in
+            try db.execute(sql: "CREATE TABLE SQLCipherWorkAround (foo INTEGER)")
+        }
         #endif
         let dbQueue2 = try makeDatabaseQueue(filename: "test.sqlite")
-        
-        // Queue 1                              Queue 2
-        // BEGIN DEFERRED TRANSACTION
+
+        // Queue 1 Queue 2 BEGIN DEFERRED TRANSACTION
         let s1 = DispatchSemaphore(value: 0)
-        //                                      BEGIN DEFERRED TRANSACTION
+        // BEGIN DEFERRED TRANSACTION
         let s2 = DispatchSemaphore(value: 0)
         // INSERT INTO stuffs (id) VALUES (NULL)
         let s3 = DispatchSemaphore(value: 0)
@@ -55,14 +53,14 @@ class ConcurrencyTests: GRDBTestCase {
         //                                      ROLLBACK
         let s4 = DispatchSemaphore(value: 0)
         // COMMIT
-        
+
         try dbQueue1.inDatabase { db in
             try db.execute(sql: "CREATE TABLE stuffs (id INTEGER PRIMARY KEY)")
         }
-        
+
         let queue = DispatchQueue(label: "GRDB", attributes: [.concurrent])
         let group = DispatchGroup()
-        
+
         // Queue 1
         queue.async(group: group) {
             do {
@@ -74,14 +72,13 @@ class ConcurrencyTests: GRDBTestCase {
                     _ = s4.wait(timeout: .distantFuture)
                     return .commit
                 }
-            }
-            catch {
+            } catch {
                 XCTFail("\(error)")
             }
         }
-        
+
         // Queue 2
-        var concurrencyError: DatabaseError? = nil
+        let concurrencyErrorMutex: Mutex<DatabaseError?> = Mutex(nil)
         queue.async(group: group) {
             do {
                 _ = s1.wait(timeout: .distantFuture)
@@ -91,19 +88,17 @@ class ConcurrencyTests: GRDBTestCase {
                     try db.execute(sql: "INSERT INTO stuffs (id) VALUES (NULL)")
                     return .commit
                 }
-            }
-            catch let error as DatabaseError {
+            } catch let error as DatabaseError {
                 s4.signal()
-                concurrencyError = error
-            }
-            catch {
+                concurrencyErrorMutex.store(error)
+            } catch {
                 XCTFail("\(error)")
             }
         }
-        
+
         _ = group.wait(timeout: .distantFuture)
-        
-        if let concurrencyError {
+
+        if let concurrencyError = concurrencyErrorMutex.load() {
             XCTAssertEqual(concurrencyError.resultCode, .SQLITE_BUSY)
             XCTAssertEqual(concurrencyError.sql, "INSERT INTO stuffs (id) VALUES (NULL)")
         } else {
@@ -114,52 +109,46 @@ class ConcurrencyTests: GRDBTestCase {
     func testExclusiveTransactionConcurrency() throws {
         let dbQueue1 = try makeDatabaseQueue(filename: "test.sqlite")
         let dbQueue2 = try makeDatabaseQueue(filename: "test.sqlite")
-        
-        // Queue 1                              Queue 2
-        // BEGIN EXCLUSIVE TRANSACTION
+
+        // Queue 1 Queue 2 BEGIN EXCLUSIVE TRANSACTION
         let s1 = DispatchSemaphore(value: 0)
-        //                                      BEGIN EXCLUSIVE TRANSACTION <--- Error
+        // BEGIN EXCLUSIVE TRANSACTION <--- Error
         let s2 = DispatchSemaphore(value: 0)
         // COMMIT
-        
+
         let queue = DispatchQueue(label: "GRDB", attributes: [.concurrent])
         let group = DispatchGroup()
-        
+
         // Queue 1
         queue.async(group: group) {
             do {
-                try dbQueue1.inTransaction(.exclusive) { db in
+                try dbQueue1.inTransaction(.exclusive) { _ in
                     s1.signal()
                     _ = s2.wait(timeout: .distantFuture)
                     return .commit
                 }
-            }
-            catch {
+            } catch {
                 XCTFail("\(error)")
             }
         }
-        
+
         // Queue 2
-        var concurrencyError: DatabaseError? = nil
+        let concurrencyErrorMutex: Mutex<DatabaseError?> = Mutex(nil)
         queue.async(group: group) {
             do {
                 _ = s1.wait(timeout: .distantFuture)
-                try dbQueue2.inTransaction(.exclusive) { db in
-                    return .commit
-                }
-            }
-            catch let error as DatabaseError {
+                try dbQueue2.inTransaction(.exclusive) { _ in .commit }
+            } catch let error as DatabaseError {
                 s2.signal()
-                concurrencyError = error
-            }
-            catch {
+                concurrencyErrorMutex.store(error)
+            } catch {
                 XCTFail("\(error)")
             }
         }
-        
+
         _ = group.wait(timeout: .distantFuture)
-        
-        if let concurrencyError {
+
+        if let concurrencyError = concurrencyErrorMutex.load() {
             XCTAssertEqual(concurrencyError.resultCode, .SQLITE_BUSY)
             XCTAssertEqual(concurrencyError.sql, "BEGIN EXCLUSIVE TRANSACTION")
         } else {
@@ -170,52 +159,46 @@ class ConcurrencyTests: GRDBTestCase {
     func testImmediateTransactionConcurrency() throws {
         let dbQueue1 = try makeDatabaseQueue(filename: "test.sqlite")
         let dbQueue2 = try makeDatabaseQueue(filename: "test.sqlite")
-        
-        // Queue 1                              Queue 2
-        // BEGIN IMMEDIATE TRANSACTION
+
+        // Queue 1 Queue 2 BEGIN IMMEDIATE TRANSACTION
         let s1 = DispatchSemaphore(value: 0)
-        //                                      BEGIN IMMEDIATE TRANSACTION <--- Error
+        // BEGIN IMMEDIATE TRANSACTION <--- Error
         let s2 = DispatchSemaphore(value: 0)
         // COMMIT
-        
+
         let queue = DispatchQueue(label: "GRDB", attributes: [.concurrent])
         let group = DispatchGroup()
-        
+
         // Queue 1
         queue.async(group: group) {
             do {
-                try dbQueue1.inTransaction(.immediate) { db in
+                try dbQueue1.inTransaction(.immediate) { _ in
                     s1.signal()
                     _ = s2.wait(timeout: .distantFuture)
                     return .commit
                 }
-            }
-            catch {
+            } catch {
                 XCTFail("\(error)")
             }
         }
-        
+
         // Queue 2
-        var concurrencyError: DatabaseError? = nil
+        let concurrencyErrorMutex: Mutex<DatabaseError?> = Mutex(nil)
         queue.async(group: group) {
             do {
                 _ = s1.wait(timeout: .distantFuture)
-                try dbQueue2.inTransaction(.immediate) { db in
-                    return .commit
-                }
-            }
-            catch let error as DatabaseError {
+                try dbQueue2.inTransaction(.immediate) { _ in .commit }
+            } catch let error as DatabaseError {
                 s2.signal()
-                concurrencyError = error
-            }
-            catch {
+                concurrencyErrorMutex.store(error)
+            } catch {
                 XCTFail("\(error)")
             }
         }
-        
+
         _ = group.wait(timeout: .distantFuture)
-        
-        if let concurrencyError {
+
+        if let concurrencyError = concurrencyErrorMutex.load() {
             XCTAssertEqual(concurrencyError.resultCode, .SQLITE_BUSY)
             XCTAssertEqual(concurrencyError.sql, "BEGIN IMMEDIATE TRANSACTION")
         } else {
@@ -226,97 +209,87 @@ class ConcurrencyTests: GRDBTestCase {
     func testBusyCallback() throws {
         let dbQueue1 = try makeDatabaseQueue(filename: "test.sqlite")
         #if GRDBCIPHER_USE_ENCRYPTION
-            // Work around SQLCipher bug when two connections are open to the
-            // same empty database: make sure the database is not empty before
-            // running this test
-            try dbQueue1.inDatabase { db in
-                try db.execute(sql: "CREATE TABLE SQLCipherWorkAround (foo INTEGER)")
-            }
+        // Work around SQLCipher bug when two connections are open to the same empty database:
+        // make sure the database is not empty before running this test
+        try dbQueue1.inDatabase { db in
+            try db.execute(sql: "CREATE TABLE SQLCipherWorkAround (foo INTEGER)")
+        }
         #endif
         let dbQueue2 = try makeDatabaseQueue(filename: "test.sqlite")
-        
-        // Queue 1                              Queue 2
-        // BEGIN EXCLUSIVE TRANSACTION
+
+        // Queue 1 Queue 2 BEGIN EXCLUSIVE TRANSACTION
         let s1 = DispatchSemaphore(value: 0)
-        //                                      BEGIN EXCLUSIVE TRANSACTION <--- Busy
+        // BEGIN EXCLUSIVE TRANSACTION <--- Busy
         let s2 = DispatchSemaphore(value: 0)
         // COMMIT
         //                                      BEGIN EXCLUSIVE TRANSACTION
         //                                      COMMIT
-        
+
         let busyCallbackCalledMutex = Mutex(false)
-        self.busyCallback = { n in
+        busyCallbackMutex.store { _ in
             busyCallbackCalledMutex.store(true)
             s2.signal()
             return true
         }
-        
+
         let queue = DispatchQueue(label: "GRDB", attributes: [.concurrent])
         let group = DispatchGroup()
-        
+
         // Queue 1
         queue.async(group: group) {
             do {
-                try dbQueue1.inTransaction(.exclusive) { db in
+                try dbQueue1.inTransaction(.exclusive) { _ in
                     s1.signal()
                     _ = s2.wait(timeout: .distantFuture)
                     return .commit
                 }
-            }
-            catch {
+            } catch {
                 XCTFail("\(error)")
             }
         }
-        
+
         // Queue 2
         queue.async(group: group) {
             do {
                 _ = s1.wait(timeout: .distantFuture)
-                try dbQueue2.inTransaction(.exclusive) { db in
-                    return .commit
-                }
-            }
-            catch {
+                try dbQueue2.inTransaction(.exclusive) { _ in .commit }
+            } catch {
                 XCTFail("\(error)")
             }
         }
-        
+
         _ = group.wait(timeout: .distantFuture)
-        
+
         XCTAssertTrue(busyCallbackCalledMutex.load())
     }
 
     func testReaderDuringDefaultTransaction() throws {
         let dbQueue1 = try makeDatabaseQueue(filename: "test.sqlite")
         #if GRDBCIPHER_USE_ENCRYPTION
-            // Work around SQLCipher bug when two connections are open to the
-            // same empty database: make sure the database is not empty before
-            // running this test
-            try dbQueue1.inDatabase { db in
-                try db.execute(sql: "CREATE TABLE SQLCipherWorkAround (foo INTEGER)")
-            }
+        // Work around SQLCipher bug when two connections are open to the same empty database:
+        // make sure the database is not empty before running this test
+        try dbQueue1.inDatabase { db in
+            try db.execute(sql: "CREATE TABLE SQLCipherWorkAround (foo INTEGER)")
+        }
         #endif
         let dbQueue2 = try makeDatabaseQueue(filename: "test.sqlite")
-        
-        // Here we test that a reader can read while a writer is writing.
-        
-        // Queue 1                              Queue 2
-        // BEGIN IMMEDIATE TRANSACTION
-        // INSERT INTO stuffs (id) VALUES (NULL)
+
+        // Here we test that a reader can read while a writer is writing. Queue 1 Queue 2 BEGIN
+        // IMMEDIATE TRANSACTION INSERT INTO stuffs (id) VALUES (NULL)
         let s1 = DispatchSemaphore(value: 0)
-        //                                      SELECT * FROM stuffs <--- 0 result
+        // SELECT * FROM stuffs <--- 0 result
         let s2 = DispatchSemaphore(value: 0)
         // COMMIT
         let s3 = DispatchSemaphore(value: 0)
-        //                                      SELECT * FROM stuffs <--- 1 result
-        
+        // SELECT * FROM stuffs <--- 1 result
+
         try dbQueue1.inDatabase { db in
             try db.execute(sql: "CREATE TABLE stuffs (id INTEGER PRIMARY KEY)")
         }
-        
+
         let queue = DispatchQueue(label: "GRDB", attributes: [.concurrent])
         let group = DispatchGroup()
-        
+
         // Queue 1
         queue.async(group: group) {
             do {
@@ -326,78 +299,73 @@ class ConcurrencyTests: GRDBTestCase {
                     _ = s2.wait(timeout: .distantFuture)
                     return .commit
                 }
-            }
-            catch {
+            } catch {
                 XCTFail("\(error)")
             }
             s3.signal()
         }
-        
+
         // Queue 2
-        var count1: Int?
-        var count2: Int?
+        let count1Mutex = Mutex<Int?>(nil)
+        let count2Mutex = Mutex<Int?>(nil)
         queue.async(group: group) {
             try! dbQueue2.writeWithoutTransaction { db in
                 _ = s1.wait(timeout: .distantFuture)
-                count1 = try Row.fetchAll(db, sql: "SELECT * FROM stuffs").count
+                try count1Mutex.store(Row.fetchAll(db, sql: "SELECT * FROM stuffs").count)
                 s2.signal()
                 _ = s3.wait(timeout: .distantFuture)
-                count2 = try Row.fetchAll(db, sql: "SELECT * FROM stuffs").count
+                try count2Mutex.store(Row.fetchAll(db, sql: "SELECT * FROM stuffs").count)
             }
         }
-        
+
         _ = group.wait(timeout: .distantFuture)
-        
-        XCTAssertEqual(count1, 0) // uncommitted changes are not visible
-        XCTAssertEqual(count2, 1) // committed changes are visible
+
+        XCTAssertEqual(count1Mutex.load(), 0)  // uncommitted changes are not visible
+        XCTAssertEqual(count2Mutex.load(), 1)  // committed changes are visible
     }
 
     func testReaderInDeferredTransactionDuringDefaultTransaction() throws {
         let dbQueue1 = try makeDatabaseQueue(filename: "test.sqlite")
         #if GRDBCIPHER_USE_ENCRYPTION
-            // Work around SQLCipher bug when two connections are open to the
-            // same empty database: make sure the database is not empty before
-            // running this test
-            try dbQueue1.inDatabase { db in
-                try db.execute(sql: "CREATE TABLE SQLCipherWorkAround (foo INTEGER)")
-            }
+        // Work around SQLCipher bug when two connections are open to the same empty database:
+        // make sure the database is not empty before running this test
+        try dbQueue1.inDatabase { db in
+            try db.execute(sql: "CREATE TABLE SQLCipherWorkAround (foo INTEGER)")
+        }
         #endif
         let dbQueue2 = try makeDatabaseQueue(filename: "test.sqlite")
-        
-        // The `SELECT * FROM stuffs` statement of Queue 2 prevents Queue 1
-        // from committing with SQLITE_BUSY.
+
+        // The `SELECT * FROM stuffs` statement of Queue 2 prevents Queue 1 from committing with
+        // SQLITE_BUSY.
         //
         // Without this select, the Queue 2 COMMIT succeeds right away.
         //
         // Both facts are unexpected.
         //
         //
-        // Queue 1                              Queue 2
-        // BEGIN IMMEDIATE TRANSACTION
-        // INSERT INTO stuffs (id) VALUES (NULL)
+        // Queue 1 Queue 2 BEGIN IMMEDIATE TRANSACTION INSERT INTO stuffs (id) VALUES (NULL)
         let s1 = DispatchSemaphore(value: 0)
         //                                      BEGIN DEFERRED TRANSACTION
         //                                      SELECT * FROM stuffs
         let s2 = DispatchSemaphore(value: 0)
         // COMMIT <--- Busy
         let s3 = DispatchSemaphore(value: 0)
-        //                                      COMMIT
-        // COMMIT
-        
+        // COMMIT COMMIT
+
         let busyCallbackCalledMutex = Mutex(false)
-        self.busyCallback = { n in
+        busyCallbackMutex.store { _ in
             busyCallbackCalledMutex.store(true)
             s3.signal()
             return true
         }
-        
+
         try dbQueue1.inDatabase { db in
             try db.execute(sql: "CREATE TABLE stuffs (id INTEGER PRIMARY KEY)")
         }
-        
+
         let queue = DispatchQueue(label: "GRDB", attributes: [.concurrent])
         let group = DispatchGroup()
-        
+
         // Queue 1
         queue.async(group: group) {
             do {
@@ -407,12 +375,11 @@ class ConcurrencyTests: GRDBTestCase {
                     _ = s2.wait(timeout: .distantFuture)
                     return .commit
                 }
-            }
-            catch {
+            } catch {
                 XCTFail("\(error)")
             }
         }
-        
+
         // Queue 2
         queue.async(group: group) {
             do {
@@ -423,14 +390,13 @@ class ConcurrencyTests: GRDBTestCase {
                     _ = s3.wait(timeout: .distantFuture)
                     return .commit
                 }
-            }
-            catch {
+            } catch {
                 XCTFail("\(error)")
             }
         }
-        
+
         _ = group.wait(timeout: .distantFuture)
-        
+
         XCTAssertTrue(busyCallbackCalledMutex.load())
     }
 }

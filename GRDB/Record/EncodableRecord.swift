@@ -24,7 +24,7 @@ import Foundation // For JSONEncoder
 /// - ``databaseDateEncodingStrategy(for:)``
 /// - ``databaseJSONEncoder(for:)-6x62c``
 /// - ``databaseUUIDEncodingStrategy(for:)``
-/// - ``databaseEncodingUserInfo-8upii``
+/// - ``databaseEncodingUserInfo-81ok5``
 /// - ``DatabaseColumnEncodingStrategy``
 /// - ``DatabaseDataEncodingStrategy``
 /// - ``DatabaseDateEncodingStrategy``
@@ -89,7 +89,7 @@ public protocol EncodableRecord: GRDBSendableMetatype {
     ///
     /// struct Player: PersistableRecord, Encodable {
     ///     // Customize the encoder name when encoding a database row
-    ///     static var databaseEncodingUserInfo: [CodingUserInfoKey: Any] {
+    ///     static var databaseEncodingUserInfo: [CodingUserInfoKey: any Sendable] {
     ///         [encoderName: "Database"]
     ///     }
     ///
@@ -112,22 +112,9 @@ public protocol EncodableRecord: GRDBSendableMetatype {
     /// ```
     ///
     /// > Important: Make sure the `databaseEncodingUserInfo` property is
-    /// > explicitly declared as `[CodingUserInfoKey: Any]`. If it is not,
-    /// > the Swift compiler may silently miss the protocol requirement.
-    ///
-    /// > Important: Make sure the property is declared as a computed
-    /// > property (`static var`), instead of a stored property
-    /// > (`static let`). Computed properties avoid a compiler diagnostic
-    /// > with stored properties:
-    /// >
-    /// > ```swift
-    /// > // static property 'databaseEncodingUserInfo' is not
-    /// > // concurrency-safe because non-'Sendable' type
-    /// > // '[CodingUserInfoKey: Any]' may have shared
-    /// > // mutable state.
-    /// > static let databaseEncodingUserInfo: [CodingUserInfoKey: Any] = [encoderName: "Database"]
-    /// > ```
-    static var databaseEncodingUserInfo: [CodingUserInfoKey: Any] { get }
+    /// > explicitly declared as `[CodingUserInfoKey: any Sendable]`. If it is
+    /// > not, the Swift compiler may silently miss the protocol requirement.
+    static var databaseEncodingUserInfo: [CodingUserInfoKey: any Sendable] { get }
     
     /// Returns the `JSONEncoder` that encodes the value for a given column.
     ///
@@ -220,7 +207,7 @@ extension EncodableRecord {
     /// `Encodable.encode(to:)` method.
     ///
     /// The default implementation returns an empty dictionary.
-    public static var databaseEncodingUserInfo: [CodingUserInfoKey: Any] {
+    public static var databaseEncodingUserInfo: [CodingUserInfoKey: any Sendable] {
         [:]
     }
     

@@ -1,17 +1,17 @@
-import XCTest
 import GRDB
+import XCTest
 
-class DatabaseAbortedTransactionTests : GRDBTestCase {
-    
+class DatabaseAbortedTransactionTests: GRDBTestCase {
     func testReadTransactionAbortedByInterrupt() throws {
         func test(_ dbReader: some DatabaseReader) throws {
             let semaphore1 = DispatchSemaphore(value: 0)
             let semaphore2 = DispatchSemaphore(value: 0)
-            
-            let block1 = {
+
+            let block1: @Sendable () -> Void = {
                 do {
                     try dbReader.read { db in
-                        db.add(function: DatabaseFunction("wait", argumentCount: 0, pure: true) { _ in
+                        db.add(function: DatabaseFunction("wait", argumentCount: 0, pure: true) {
+                            _ in
                             semaphore1.signal()
                             semaphore2.wait()
                             return nil
@@ -25,32 +25,30 @@ class DatabaseAbortedTransactionTests : GRDBTestCase {
                     XCTFail("Unexpected error: \(error)")
                 }
             }
-            let block2 = {
+            let block2: @Sendable () -> Void = {
                 semaphore1.wait()
                 dbReader.interrupt()
                 semaphore2.signal()
             }
-            let blocks = [block1, block2]
-            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in
-                blocks[index]()
-            }
+            let blocks: [@Sendable () -> Void] = [block1, block2]
+            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in blocks[index]() }
         }
-        
+
         try test(DatabaseQueue())
         try test(makeDatabaseQueue())
         try test(makeDatabasePool())
         try test(makeDatabasePool().makeSnapshot())
-#if SQLITE_ENABLE_SNAPSHOT && !SQLITE_DISABLE_SNAPSHOT
+        #if SQLITE_ENABLE_SNAPSHOT && !SQLITE_DISABLE_SNAPSHOT
         try test(makeDatabasePool().makeSnapshotPool())
-#endif
+        #endif
     }
-    
+
     func testReadTransactionAbortedByInterruptDoesNotPreventFurtherRead() throws {
         func test(_ dbReader: some DatabaseReader) throws {
             let semaphore1 = DispatchSemaphore(value: 0)
             let semaphore2 = DispatchSemaphore(value: 0)
-            
-            let block1 = {
+
+            let block1: @Sendable () -> Void = {
                 try! dbReader.read { db in
                     db.add(function: DatabaseFunction("wait", argumentCount: 0, pure: true) { _ in
                         semaphore1.signal()
@@ -70,41 +68,38 @@ class DatabaseAbortedTransactionTests : GRDBTestCase {
                     try XCTAssertTrue(Bool.fetchOne(db, sql: "SELECT 1")!)
                 }
             }
-            let block2 = {
+            let block2: @Sendable () -> Void = {
                 semaphore1.wait()
                 dbReader.interrupt()
                 semaphore2.signal()
             }
-            let blocks = [block1, block2]
-            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in
-                blocks[index]()
-            }
+            let blocks: [@Sendable () -> Void] = [block1, block2]
+            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in blocks[index]() }
         }
-        
+
         try test(DatabaseQueue())
         try test(makeDatabaseQueue())
         try test(makeDatabasePool())
         try test(makeDatabasePool().makeSnapshot())
-#if SQLITE_ENABLE_SNAPSHOT && !SQLITE_DISABLE_SNAPSHOT
+        #if SQLITE_ENABLE_SNAPSHOT && !SQLITE_DISABLE_SNAPSHOT
         try test(makeDatabasePool().makeSnapshotPool())
-#endif
+        #endif
     }
-    
+
     func testWriteTransactionAbortedByInterrupt() throws {
         func setup<T: DatabaseWriter>(_ dbWriter: T) throws -> T {
-            try dbWriter.write { db in
-                try db.execute(sql: "CREATE TABLE t(a);")
-            }
+            try dbWriter.write { db in try db.execute(sql: "CREATE TABLE t(a);") }
             return dbWriter
         }
         func test(_ dbWriter: some DatabaseWriter) throws {
             let semaphore1 = DispatchSemaphore(value: 0)
             let semaphore2 = DispatchSemaphore(value: 0)
-            
-            let block1 = {
+
+            let block1: @Sendable () -> Void = {
                 do {
                     try dbWriter.write { db in
-                        db.add(function: DatabaseFunction("wait", argumentCount: 0, pure: true) { _ in
+                        db.add(function: DatabaseFunction("wait", argumentCount: 0, pure: true) {
+                            _ in
                             semaphore1.signal()
                             semaphore2.wait()
                             return nil
@@ -121,42 +116,39 @@ class DatabaseAbortedTransactionTests : GRDBTestCase {
                     XCTFail("Unexpected error: \(error)")
                 }
             }
-            let block2 = {
+            let block2: @Sendable () -> Void = {
                 semaphore1.wait()
                 dbWriter.interrupt()
                 semaphore2.signal()
             }
-            let blocks = [block1, block2]
-            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in
-                blocks[index]()
-            }
+            let blocks: [@Sendable () -> Void] = [block1, block2]
+            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in blocks[index]() }
         }
-        
+
         try test(setup(DatabaseQueue()))
         try test(setup(makeDatabaseQueue()))
         try test(setup(makeDatabasePool()))
     }
-    
+
     func testWriteTransactionAbortedByInterruptPreventsFurtherDatabaseAccess() throws {
         func setup<T: DatabaseWriter>(_ dbWriter: T) throws -> T {
-            try dbWriter.write { db in
-                try db.execute(sql: "CREATE TABLE t(a);")
-            }
+            try dbWriter.write { db in try db.execute(sql: "CREATE TABLE t(a);") }
             return dbWriter
         }
         func test(_ dbWriter: some DatabaseWriter) throws {
             let semaphore1 = DispatchSemaphore(value: 0)
             let semaphore2 = DispatchSemaphore(value: 0)
-            
-            let block1 = {
+
+            let block1: @Sendable () -> Void = {
                 do {
                     try dbWriter.write { db in
                         do {
-                            db.add(function: DatabaseFunction("wait", argumentCount: 0, pure: true) { _ in
-                                semaphore1.signal()
-                                semaphore2.wait()
-                                return nil
-                            })
+                            db.add(function: DatabaseFunction("wait", argumentCount: 0, pure: true)
+                                { _ in
+                                    semaphore1.signal()
+                                    semaphore2.wait()
+                                    return nil
+                                })
                             try db.execute(sql: "INSERT INTO t SELECT wait()")
                             XCTFail("Expected error")
                         } catch let error as DatabaseError {
@@ -164,9 +156,9 @@ class DatabaseAbortedTransactionTests : GRDBTestCase {
                         } catch {
                             XCTFail("Unexpected error: \(error)")
                         }
-                        
+
                         XCTAssertFalse(db.isInsideTransaction)
-                        
+
                         do {
                             _ = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM t")
                             XCTFail("Expected error")
@@ -177,7 +169,7 @@ class DatabaseAbortedTransactionTests : GRDBTestCase {
                         } catch {
                             XCTFail("Unexpected error: \(error)")
                         }
-                        
+
                         do {
                             try db.execute(sql: "INSERT INTO t (a) VALUES (0)")
                             XCTFail("Expected error")
@@ -191,42 +183,38 @@ class DatabaseAbortedTransactionTests : GRDBTestCase {
                     }
                     XCTFail("Expected error")
                 } catch let error as DatabaseError {
-                    // SQLITE_INTERRUPT has been caught. So we get SQLITE_ABORT
-                    // from the last commit.
+                    // SQLITE_INTERRUPT has been caught. So we get SQLITE_ABORT from the last
+                    // commit.
                     XCTAssertEqual(error.resultCode, .SQLITE_ABORT)
                     XCTAssertEqual(error.message, "Transaction was aborted")
                 } catch {
                     XCTFail("Unexpected error: \(error)")
                 }
             }
-            let block2 = {
+            let block2: @Sendable () -> Void = {
                 semaphore1.wait()
                 dbWriter.interrupt()
                 semaphore2.signal()
             }
-            let blocks = [block1, block2]
-            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in
-                blocks[index]()
-            }
+            let blocks: [@Sendable () -> Void] = [block1, block2]
+            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in blocks[index]() }
         }
-        
+
         try test(setup(DatabaseQueue()))
         try test(setup(makeDatabaseQueue()))
         try test(setup(makeDatabasePool()))
     }
-    
+
     func testWriteTransactionAbortedByInterruptDoesNotPreventRollback() throws {
         func setup<T: DatabaseWriter>(_ dbWriter: T) throws -> T {
-            try dbWriter.write { db in
-                try db.execute(sql: "CREATE TABLE t(a);")
-            }
+            try dbWriter.write { db in try db.execute(sql: "CREATE TABLE t(a);") }
             return dbWriter
         }
         func test(_ dbWriter: some DatabaseWriter) throws {
             let semaphore1 = DispatchSemaphore(value: 0)
             let semaphore2 = DispatchSemaphore(value: 0)
-            
-            let block1 = {
+
+            let block1: @Sendable () -> Void = {
                 try! dbWriter.writeWithoutTransaction { db in
                     db.add(function: DatabaseFunction("wait", argumentCount: 0, pure: true) { _ in
                         semaphore1.signal()
@@ -242,34 +230,33 @@ class DatabaseAbortedTransactionTests : GRDBTestCase {
                         } catch {
                             XCTFail("Unexpected error: \(error)")
                         }
-                        
+
                         XCTAssertFalse(db.isInsideTransaction)
                         return .rollback
                     }
                 }
             }
-            let block2 = {
+            let block2: @Sendable () -> Void = {
                 semaphore1.wait()
                 dbWriter.interrupt()
                 semaphore2.signal()
             }
-            let blocks = [block1, block2]
-            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in
-                blocks[index]()
-            }
+            let blocks: [@Sendable () -> Void] = [block1, block2]
+            DispatchQueue.concurrentPerform(iterations: blocks.count) { index in blocks[index]() }
         }
-        
+
         try test(setup(DatabaseQueue()))
         try test(setup(makeDatabaseQueue()))
         try test(setup(makeDatabasePool()))
     }
-    
+
     func testTransactionAbortedByConflictPreventsFurtherDatabaseAccess() throws {
         func setup<T: DatabaseWriter>(_ dbWriter: T) throws -> T {
             try dbWriter.write { db in
-                try db.execute(sql: """
-                    CREATE TABLE t(a UNIQUE ON CONFLICT ROLLBACK);
-                    """)
+                try db.execute(
+                    sql: """
+                        CREATE TABLE t(a UNIQUE ON CONFLICT ROLLBACK);
+                        """)
             }
             return dbWriter
         }
@@ -277,10 +264,11 @@ class DatabaseAbortedTransactionTests : GRDBTestCase {
             do {
                 try dbWriter.write { db in
                     do {
-                        try db.execute(sql: """
-                            INSERT INTO t (a) VALUES (1);
-                            INSERT INTO t (a) VALUES (1);
-                            """)
+                        try db.execute(
+                            sql: """
+                                INSERT INTO t (a) VALUES (1);
+                                INSERT INTO t (a) VALUES (1);
+                                """)
                         XCTFail("Expected error")
                     } catch let error as DatabaseError {
                         XCTAssertEqual(error.resultCode, .SQLITE_CONSTRAINT)
@@ -289,9 +277,9 @@ class DatabaseAbortedTransactionTests : GRDBTestCase {
                     } catch {
                         XCTFail("Unexpected error: \(error)")
                     }
-                    
+
                     XCTAssertFalse(db.isInsideTransaction)
-                    
+
                     try db.execute(sql: "INSERT INTO t (a) VALUES (2)")
                 }
                 XCTFail("Expected error")
@@ -303,28 +291,27 @@ class DatabaseAbortedTransactionTests : GRDBTestCase {
                 XCTFail("Unexpected error: \(error)")
             }
         }
-        
+
         try test(setup(DatabaseQueue()))
         try test(setup(makeDatabaseQueue()))
         try test(setup(makeDatabasePool()))
     }
-    
+
     func testTransactionAbortedByUser() throws {
         func setup<T: DatabaseWriter>(_ dbWriter: T) throws -> T {
-            try dbWriter.write { db in
-                try db.execute(sql: "CREATE TABLE t(a);")
-            }
+            try dbWriter.write { db in try db.execute(sql: "CREATE TABLE t(a);") }
             return dbWriter
         }
         func test(_ dbReader: some DatabaseReader) throws {
             do {
                 try dbReader.unsafeRead { db in
                     try db.inTransaction {
-                        try db.execute(sql: """
-                            SELECT * FROM t;
-                            ROLLBACK;
-                            SELECT * FROM t;
-                            """)
+                        try db.execute(
+                            sql: """
+                                SELECT * FROM t;
+                                ROLLBACK;
+                                SELECT * FROM t;
+                                """)
                         return .commit
                     }
                 }
@@ -337,37 +324,36 @@ class DatabaseAbortedTransactionTests : GRDBTestCase {
                 XCTFail("Unexpected error: \(error)")
             }
         }
-        
+
         try test(setup(DatabaseQueue()))
         try test(setup(makeDatabaseQueue()))
         try test(setup(makeDatabasePool()))
     }
-    
+
     func testReadTransactionRestartHack() throws {
-        // Here we test that the "ROLLBACK; BEGIN TRANSACTION;" hack which
-        // "refreshes" a DatabaseSnaphot works.
-        // See https://github.com/groue/GRDB.swift/issues/619
-        // This hack puts temporarily the transaction in the aborded
-        // state. Here we test that we don't throw SQLITE_ABORT.
-        
+        // Here we test that the "ROLLBACK; BEGIN TRANSACTION;" hack which "refreshes" a
+        // DatabaseSnaphot works. See https://github.com/groue/GRDB.swift/issues/619 This hack puts
+        // temporarily the transaction in the aborded state. Here we test that we don't throw
+        // SQLITE_ABORT.
+
         let dbPool = try makeDatabasePool()
-        try dbPool.write { db in
-            try db.execute(sql: "CREATE TABLE t(a);")
-        }
+        try dbPool.write { db in try db.execute(sql: "CREATE TABLE t(a);") }
         let snapshot = try dbPool.makeSnapshot()
         try snapshot.read { db in
-            try db.execute(sql: """
-                ROLLBACK;
-                BEGIN TRANSACTION;
-                """)
+            try db.execute(
+                sql: """
+                    ROLLBACK;
+                    BEGIN TRANSACTION;
+                    """)
         }
         try snapshot.read { db in
-            try db.execute(sql: """
-                SELECT * FROM t;
-                ROLLBACK;
-                BEGIN TRANSACTION;
-                SELECT * FROM t;
-                """)
+            try db.execute(
+                sql: """
+                    SELECT * FROM t;
+                    ROLLBACK;
+                    BEGIN TRANSACTION;
+                    SELECT * FROM t;
+                    """)
         }
     }
 }

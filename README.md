@@ -1,16 +1,18 @@
-# The Toba fork of GRDB
+# The Toba adaptation of GRDB
 
-This repository forks [groue/GRDB.swift](https://github.com/groue/GRDB.swift). Its main patch
+This repository adapts [groue/GRDB.swift](https://github.com/groue/GRDB.swift). It owns its code and
+does not preserve the upstream shape for the sake of an easy merge. See `CLAUDE.md`. The main patch
 compiles its own SQLite instead of linking the system library. Apple ships SQLite without
 `SQLITE_ENABLE_PREUPDATE_HOOK`, and `toba-data` calls `sqlite3_preupdate_new` to read a changed row
 in a CloudKit shadow table. The upstream README follows this section unchanged.
 
 | Path | What the patch does |
 |---|---|
-| `Package.swift` | Declares `GRDBSQLite` as a C target rather than a system library, applies the SQLite defines unconditionally, and exposes one library product over the `GRDB` and `GRDBSQLite` targets |
-| `Sources/GRDBSQLite/` | Carries the SQLite 3.53.1 amalgamation. `amalgamation.c` is the one compiled source and it includes `sqlite3.c`, so `sqlite3.c` stays byte for byte the sqlite.org release |
+| `Package.swift` | Declares `GRDBSQLite` as a C target rather than a system library, applies the SQLite defines unconditionally, exposes one library product over the `GRDB` and `GRDBSQLite` targets, and raises the platform floor to the OS 27 line |
+| `Sources/GRDBSQLite/` | Carries the SQLite 3.53.4 amalgamation. `amalgamation.c` is the one compiled source and it includes `sqlite3.c`, so `sqlite3.c` stays byte for byte the sqlite.org release. It also holds the two pragmas that silence the warnings the amalgamation raises on purpose |
 | `Scripts/upgrade-sqlite.sh` | Copies a newer amalgamation into that directory |
 | `GRDB/Core/TransactionObserver.swift` | Reads a null value for a column the preupdate hook refuses, rather than trapping. Filters the statement observations before it copies an event into the savepoint buffer |
+| 21 files across `GRDB/` | Drops every availability gate that names an OS version. 88 of them stood in for a SQLite version, and two bounded `Int128` decoding below the new floor |
 
 Upstream gates the preupdate defines behind a `SQLITE_ENABLE_PREUPDATE_HOOK` environment variable
 that its own comment tells nobody to rely on. This fork applies them always, because the vendored
@@ -85,6 +87,43 @@ rows per synchronized write, the find-or-insert helpers wrap those writes in a s
 The test is `TransactionObserverTests.testSavepointBufferHoldsOnlyTrackedEvents`. It reaches
 `DatabaseObservationBroker.savepointStack`, which this fork makes internal rather than private for
 that reason.
+
+## An availability gate that stands in for a SQLite version
+
+This is a **behavioral** deviation from GRDB 7.11.1. It widens the API rather than narrowing it.
+
+Upstream carries 88 availability gates that name an OS version, and 87 of them say in a trailing
+comment which SQLite version they mean:
+
+```swift
+@available(iOS 15, macOS 12, tvOS 15, watchOS 8, *)  // SQLite 3.35.0+
+@available(iOS 16, tvOS 17, watchOS 9, *)            // SQLite 3.38+ with exceptions for macOS
+@available(iOS 14, macOS 10.16, tvOS 14, *)          // SQLite 3.30+
+```
+
+The gate is correct upstream, where the build links the SQLite that Apple ships with the OS. It is
+wrong here. This package compiles `Sources/GRDBSQLite/sqlite3.c`, which declares `SQLITE_VERSION
+"3.53.4"`, so every gated feature is present on every platform at every OS version the package
+supports. The gate then costs a caller an availability annotation for a feature that is always
+there.
+
+This package removes all 88, and it takes the modern branch unconditionally at the three
+`if #available` sites in `SQLTableGenerator.swift`, `Database+Dump.swift` and
+`Database+Schema.swift`. The gates covered `RETURNING`, `ALTER TABLE DROP COLUMN`, generated
+columns, `STRICT` tables, `PRAGMA table_list`, the JSON `->` and `->>` operators, the JSON
+functions, `NULLS LAST` ordering, the aggregate `FILTER` clause, `VACUUM INTO` and the
+`remove_diacritics=2` tokenizer argument.
+
+No OS-version gate stays. `FetchableRecord+Decodable.swift` bounded `Int128` and `UInt128` decoding
+on macOS 15, and the OS 27 floor clears that. The 44 `@available(*, deprecated)` and
+`@available(*, unavailable)` markers stay, because they deprecate API and name no OS.
+
+The deviation is behavioral because a caller on an older OS gains access to a feature it could not
+reach before. Nothing that compiles today stops compiling: an availability check around a call that
+no longer needs one is still valid Swift.
+
+The test is `VendoredSQLiteFeatureTests`. It calls each ungated feature with no availability check,
+so it stops compiling if a gate comes back, and it asserts the SQLite version each feature needs.
 
 ## Merge a new upstream release
 
@@ -2853,11 +2892,11 @@ The standard way to provide such context is the `userInfo` dictionary. Implement
 
 ```swift
 protocol FetchableRecord {
-    static var databaseDecodingUserInfo: [CodingUserInfoKey: Any] { get }
+    static var databaseDecodingUserInfo: [CodingUserInfoKey: any Sendable] { get }
 }
 
 protocol EncodableRecord {
-    static var databaseEncodingUserInfo: [CodingUserInfoKey: Any] { get }
+    static var databaseEncodingUserInfo: [CodingUserInfoKey: any Sendable] { get }
 }
 ```
 
@@ -2890,7 +2929,7 @@ let player = try decoder.decode(Player.self, from: jsonData)
 
 ```swift
 extension Player: FetchableRecord {
-    static var databaseDecodingUserInfo: [CodingUserInfoKey: Any] {
+    static var databaseDecodingUserInfo: [CodingUserInfoKey: any Sendable] {
         [decoderName: "database row"]
     }
 }
@@ -2899,7 +2938,7 @@ extension Player: FetchableRecord {
 let player = try Player.fetchOne(db, ...)
 ```
 
-> **Note**: make sure the `databaseDecodingUserInfo` and `databaseEncodingUserInfo` properties are explicitly declared as `[CodingUserInfoKey: Any]`. If they are not, the Swift compiler may silently miss the protocol requirement, resulting in sticky empty userInfo.
+> **Note**: make sure the `databaseDecodingUserInfo` and `databaseEncodingUserInfo` properties are explicitly declared as `[CodingUserInfoKey: any Sendable]`. If they are not, the Swift compiler may silently miss the protocol requirement, resulting in sticky empty userInfo.
 
 
 ### Tip: Derive Columns from Coding Keys
