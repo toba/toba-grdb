@@ -1,5 +1,17 @@
+// Import C SQLite functions
+#if GRDBCIPHER // CocoaPods (SQLCipher subspec)
+import SQLCipher
+#elseif GRDBFRAMEWORK // GRDB.xcodeproj or CocoaPods (standard subspec)
+import SQLite3
+#elseif GRDBCUSTOMSQLITE // GRDBCustom Framework
+#elseif SQLCipher
+import SQLCipher
+#else // Default SPM trait must be the default. It impossible to detect from Xcode.
+import GRDBSQLite
+#endif
+
 import XCTest
-import GRDB
+@testable import GRDB
 
 class DatabaseQueueInMemoryTests : GRDBTestCase {
     func test_independent_in_memory_database() throws {
@@ -38,6 +50,13 @@ class DatabaseQueueInMemoryTests : GRDBTestCase {
         // on disk. Without SQLITE_USE_URI it reads the uri as a literal file name and creates
         // a file in the current directory.
         XCTAssertEqual(file, "")
+    }
+
+    func test_open_flags_accept_a_uri_path() throws {
+        // the compile-time SQLITE_USE_URI covers the vendored amalgamation alone, so the open
+        // flag is what keeps the uri of a named in-memory database parsing under a custom or
+        // SQLCipher build
+        XCTAssertNotEqual(Configuration().SQLiteOpenFlags & SQLITE_OPEN_URI, 0)
     }
 
     func test_shared_in_memory_databases_are_shared_by_name() throws {

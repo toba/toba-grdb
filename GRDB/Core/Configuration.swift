@@ -478,6 +478,11 @@ public struct Configuration: Sendable {
         if sqlite3_libversion_number() >= 3037000 {
             flags |= 0x02000000 // SQLITE_OPEN_EXRESCODE
         }
+        // A named in-memory database opens through a file: uri. A SQLite built without
+        // SQLITE_USE_URI reads that uri as a literal file name and writes a real file, so the flag
+        // asks for uri parsing whichever build the target links. It changes nothing for a path that
+        // does not start with file:.
+        flags |= SQLITE_OPEN_URI
         return threadingMode.SQLiteOpenFlags | flags
     }
     

@@ -1,15 +1,16 @@
 # The Toba fork of GRDB
 
-This repository forks [groue/GRDB.swift](https://github.com/groue/GRDB.swift). It carries one
-patch: it compiles its own SQLite instead of linking the system library. Apple ships SQLite
-without `SQLITE_ENABLE_PREUPDATE_HOOK`, and `toba-data` calls `sqlite3_preupdate_new` to read a
-changed row in a CloudKit shadow table. The upstream README follows this section unchanged.
+This repository forks [groue/GRDB.swift](https://github.com/groue/GRDB.swift). Its main patch
+compiles its own SQLite instead of linking the system library. Apple ships SQLite without
+`SQLITE_ENABLE_PREUPDATE_HOOK`, and `toba-data` calls `sqlite3_preupdate_new` to read a changed row
+in a CloudKit shadow table. The upstream README follows this section unchanged.
 
 | Path | What the patch does |
 |---|---|
 | `Package.swift` | Declares `GRDBSQLite` as a C target rather than a system library, applies the SQLite defines unconditionally, and exposes one library product over the `GRDB` and `GRDBSQLite` targets |
 | `Sources/GRDBSQLite/` | Carries the SQLite 3.53.1 amalgamation. `amalgamation.c` is the one compiled source and it includes `sqlite3.c`, so `sqlite3.c` stays byte for byte the sqlite.org release |
 | `Scripts/upgrade-sqlite.sh` | Copies a newer amalgamation into that directory |
+| `GRDB/Core/TransactionObserver.swift` | Reads a null value for a column the preupdate hook refuses, rather than trapping. Filters the statement observations before it copies an event into the savepoint buffer |
 
 Upstream gates the preupdate defines behind a `SQLITE_ENABLE_PREUPDATE_HOOK` environment variable
 that its own comment tells nobody to rely on. This fork applies them always, because the vendored
@@ -18,6 +19,72 @@ for Linux, which existed because a distribution SQLite may lack snapshot support
 
 `.gitmodules` and the `SQLiteCustom/src` gitlink are gone. SwiftPM runs a recursive submodule init
 on every package checkout, and that pulled 111 MB of `SQLiteLib` that this build never reads.
+
+## A VIRTUAL generated column in a preupdate event
+
+This is a **behavioral** deviation from GRDB 7.11.1.
+
+Upstream `MetalDatabasePreUpdateEventImpl.preupdate_getValues` force-unwraps its own `getValue`
+helper, which answers nil whenever the SQLite call returns anything other than `SQLITE_OK`:
+
+```swift
+for i in 0..<columnCount {
+    let value = getValue(connection, column: i, sqlite_func: sqlite_func)!
+    columnValues.append(value)
+}
+```
+
+`sqlite3_preupdate_old` and `sqlite3_preupdate_new` return `SQLITE_RANGE` for a VIRTUAL generated
+column. Such a column has no stored value, so `sqlite3TableColumnToStorage` maps it past the
+cursor's field count. The `!` then traps.
+
+This fork reads a null value for that column instead, in `preupdate_getValues` and in the two
+per-index accessors beside it. `sqlite3_preupdate_count` counts the VIRTUAL column, so the array
+keeps one entry per column and an index still maps to a column. The per-index accessors now agree
+with the array that a copied event carries.
+
+The deviation is behavioral because without it one VIRTUAL generated column anywhere in a written
+table crashes the write. The trap needs no preupdate observer of its own: `installUpdateHook`
+installs `sqlite3_preupdate_hook` beside `sqlite3_update_hook`, so a plain `ValueObservation` arms
+the path, and `DatabasePreUpdateEvent.copy()` reads every column.
+
+The tests are `TransactionObserverTests.testEventsWithVirtualGeneratedColumn` and
+`TransactionObserverTests.testEventValueAtIndexWithVirtualGeneratedColumn`.
+
+## The savepoint buffer and an untracked event
+
+This is an **additive** deviation from GRDB 7.11.1. It changes no observer notification.
+
+`DatabaseObservationBroker` holds an event instead of notifying it while a savepoint is open.
+Upstream buffers the event for every statement observation, and it applies the `tracksEvent`
+predicate later, in `notifyBufferedEvents`:
+
+```swift
+savepointStack.eventsBuffer.append((event: event.copy(), statementObservations: statementObservations))
+```
+
+The copy is paid before the filter. `DatabasePreUpdateEvent.copy()` materializes
+`initialDatabaseValues` and `finalDatabaseValues`, and each of those reads every column of the row
+through `sqlite3_preupdate_old` or `sqlite3_preupdate_new`. An event no observation tracks is
+discarded at notification time, so that whole copy is waste.
+
+This fork filters first, in the new `DatabaseObservationBroker.bufferEvent` method. An event that
+no observation tracks is never copied and never buffered. `notifyBufferedEvents` no longer repeats
+the predicate, because the buffer now holds tracked observations alone.
+
+An early filter is only correct when the predicate is stable between buffer time and notify time.
+`DatabaseEventPredicate` is an enum whose payload is two immutable arrays of `DatabaseEventKind`,
+built once per statement in `TransactionObservation.statementObservation(for:)`. Nothing mutates it
+while the savepoint is open.
+
+The deviation is additive because the set of events an observer receives does not change. Only the
+work behind the buffer changes. It matters to `toba-data`: the CloudKit shadow triggers write many
+rows per synchronized write, the find-or-insert helpers wrap those writes in a savepoint, and
+`installUpdateHook` arms `sqlite3_preupdate_hook` for any `ValueObservation`.
+
+The test is `TransactionObserverTests.testSavepointBufferHoldsOnlyTrackedEvents`. It reaches
+`DatabaseObservationBroker.savepointStack`, which this fork makes internal rather than private for
+that reason.
 
 ## Merge a new upstream release
 

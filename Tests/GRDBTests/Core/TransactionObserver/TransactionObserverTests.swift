@@ -42,8 +42,11 @@ private class Observer : TransactionObserver {
     var willChangeCount: Int = 0
     var lastCommittedPreUpdateEvents: [DatabasePreUpdateEvent] = []
     var preUpdateEvents: [DatabasePreUpdateEvent] = []
+    // Reads the live event, before copy() turns it into stored values
+    var willChangeBlock: ((DatabasePreUpdateEvent) -> ())?
     func databaseWillChange(with event: DatabasePreUpdateEvent) {
         willChangeCount += 1
+        willChangeBlock?(event)
         preUpdateEvents.append(event.copy())
     }
     #endif
@@ -654,6 +657,94 @@ class TransactionObserverTests: GRDBTestCase {
             #endif
         }
     }
+    
+    #if SQLITE_ENABLE_PREUPDATE_HOOK
+    // A VIRTUAL generated column has no stored value, so sqlite3_preupdate_old and
+    // sqlite3_preupdate_new answer SQLITE_RANGE for it. The event reads null there instead
+    // of trapping, and it still reports one value per column.
+    func testEventsWithVirtualGeneratedColumn() throws {
+        let dbQueue = try makeDatabaseQueue()
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE player (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT,
+                    upperName TEXT GENERATED ALWAYS AS (UPPER(name)) VIRTUAL)
+                """)
+        }
+        let observer = Observer()
+        dbQueue.add(transactionObserver: observer)
+        
+        try dbQueue.writeWithoutTransaction { db in
+            try db.execute(sql: "INSERT INTO player (id, name) VALUES (1, 'Arthur')")
+            XCTAssertEqual(observer.lastCommittedPreUpdateEvents.count, 1)
+            XCTAssertTrue(observer.lastCommittedPreUpdateEvents.contains { event in
+                self.match(preUpdateEvent: event, kind: .insert, tableName: "player",
+                           initialRowID: nil, finalRowID: 1,
+                           initialValues: nil,
+                           finalValues: [
+                            1.databaseValue,
+                            "Arthur".databaseValue,
+                            .null,
+                           ])
+            })
+            
+            try db.execute(sql: "UPDATE player SET name = 'Barbara' WHERE id = 1")
+            XCTAssertEqual(observer.lastCommittedPreUpdateEvents.count, 1)
+            XCTAssertTrue(observer.lastCommittedPreUpdateEvents.contains { event in
+                self.match(preUpdateEvent: event, kind: .update, tableName: "player",
+                           initialRowID: 1, finalRowID: 1,
+                           initialValues: [
+                            1.databaseValue,
+                            "Arthur".databaseValue,
+                            .null,
+                           ],
+                           finalValues: [
+                            1.databaseValue,
+                            "Barbara".databaseValue,
+                            .null,
+                           ])
+            })
+            
+            try db.execute(sql: "DELETE FROM player WHERE id = 1")
+            XCTAssertEqual(observer.lastCommittedPreUpdateEvents.count, 1)
+            XCTAssertTrue(observer.lastCommittedPreUpdateEvents.contains { event in
+                self.match(preUpdateEvent: event, kind: .delete, tableName: "player",
+                           initialRowID: 1, finalRowID: nil,
+                           initialValues: [
+                            1.databaseValue,
+                            "Barbara".databaseValue,
+                            .null,
+                           ],
+                           finalValues: nil)
+            })
+        }
+    }
+    
+    // The per-index accessors of a live event agree with the array a copied event carries.
+    func testEventValueAtIndexWithVirtualGeneratedColumn() throws {
+        let dbQueue = try makeDatabaseQueue()
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE player (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT,
+                    upperName TEXT GENERATED ALWAYS AS (UPPER(name)) VIRTUAL)
+                """)
+        }
+        var finalValues: [DatabaseValue?] = []
+        let observer = Observer()
+        observer.willChangeBlock = { event in
+            finalValues = (0..<event.count).map { event.finalDatabaseValue(atIndex: $0) }
+        }
+        dbQueue.add(transactionObserver: observer)
+        
+        try dbQueue.writeWithoutTransaction { db in
+            try db.execute(sql: "INSERT INTO player (id, name) VALUES (1, 'Arthur')")
+        }
+        XCTAssertEqual(finalValues, [1.databaseValue, "Arthur".databaseValue, .null])
+    }
+    #endif
     
     func testUpdateEvent() throws {
         let dbQueue = try makeDatabaseQueue()
@@ -1687,7 +1778,49 @@ class TransactionObserverTests: GRDBTestCase {
             XCTAssertTrue(match(event: observer.lastCommittedEvents[0], kind: .delete, tableName: "b", rowId: 42))
         }
     }
-    
+
+    // A savepoint buffers an event instead of notifying it, and buffering copies the event. An
+    // event no observation tracks never reaches an observer, so it must not reach the buffer
+    // either. The preupdate copy is the costly one, because it reads every column of the row.
+    func testSavepointBufferHoldsOnlyTrackedEvents() throws {
+        let dbQueue = try makeDatabaseQueue()
+
+        // Observe insertions in table a alone
+        let observer = Observer(observes: { eventKind in
+            if case .insert(let tableName) = eventKind {
+                return tableName == "a"
+            }
+            return false
+        })
+        dbQueue.add(transactionObserver: observer)
+
+        try dbQueue.writeWithoutTransaction { db in
+            try db.execute(sql: """
+                CREATE TABLE a(id INTEGER PRIMARY KEY);
+                CREATE TABLE b(id INTEGER PRIMARY KEY);
+                CREATE TRIGGER t AFTER INSERT ON a BEGIN INSERT INTO b (id) VALUES (NEW.id); END;
+                """)
+
+            // The insertion in b comes from the trigger, and no observation tracks it
+            try db.execute(sql: "SAVEPOINT test")
+            try db.execute(sql: "INSERT INTO a (id) VALUES (1)")
+            #if SQLITE_ENABLE_PREUPDATE_HOOK
+            // one preupdate event and one update event, both for table a
+            XCTAssertEqual(db.observationBroker!.savepointStack.eventsBuffer.count, 2)
+            #else
+            XCTAssertEqual(db.observationBroker!.savepointStack.eventsBuffer.count, 1)
+            #endif
+            try db.execute(sql: "RELEASE SAVEPOINT test")
+        }
+
+        XCTAssertEqual(observer.lastCommittedEvents.count, 1)
+        XCTAssertTrue(match(event: observer.lastCommittedEvents[0], kind: .insert, tableName: "a", rowId: 1))
+        #if SQLITE_ENABLE_PREUPDATE_HOOK
+        XCTAssertEqual(observer.lastCommittedPreUpdateEvents.count, 1)
+        XCTAssertEqual(observer.lastCommittedPreUpdateEvents[0].tableName, "a")
+        #endif
+    }
+
     func testStopObservingDatabaseChangesUntilNextTransaction() throws {
         let dbQueue = try makeDatabaseQueue()
         

@@ -251,7 +251,7 @@ class DatabaseObservationBroker {
     /// all savepoints are released. The goal is to only tell transaction
     /// observers about database changes that have a chance to be committed
     /// on disk.
-    private let savepointStack = SavepointStack()
+    let savepointStack = SavepointStack()
     
     /// Tracks the transaction completion, as reported by the
     /// `sqlite3_commit_hook` and `sqlite3_rollback_hook` callbacks.
@@ -459,7 +459,7 @@ class DatabaseObservationBroker {
             }
         } else {
             // Buffer
-            savepointStack.eventsBuffer.append((event: event.copy(), statementObservations: statementObservations))
+            bufferEvent(event)
         }
     }
     #endif
@@ -484,10 +484,21 @@ class DatabaseObservationBroker {
             }
         } else {
             // Buffer
-            savepointStack.eventsBuffer.append((event: event.copy(), statementObservations: statementObservations))
+            bufferEvent(event)
         }
     }
-    
+
+    /// Holds the event until every savepoint is released, for the observations that track it.
+    ///
+    /// The filter runs here and not in `notifyBufferedEvents`, so that an event no observation
+    /// tracks costs no `copy()`. Copying a `DatabasePreUpdateEvent` reads every column of the row
+    /// through `sqlite3_preupdate_old` and `sqlite3_preupdate_new`.
+    private func bufferEvent(_ event: some DatabaseEventProtocol) {
+        let tracking = statementObservations.filter { $0.tracksEvent(event) }
+        guard !tracking.isEmpty else { return }
+        savepointStack.eventsBuffer.append((event: event.copy(), statementObservations: tracking))
+    }
+
     // MARK: - End of transaction
     
     // Called from sqlite3_commit_hook and databaseDidCommitEmptyDeferredTransaction()
@@ -651,9 +662,10 @@ class DatabaseObservationBroker {
         let eventsBuffer = savepointStack.eventsBuffer
         savepointStack.clear()
         
+        // bufferEvent has already dropped the observations that do not track the event
         for (event, statementObservations) in eventsBuffer {
             assert(statementObservations.isEmpty || !database.isReadOnly, "Read-only transactions are not notified")
-            for statementObservation in statementObservations where statementObservation.tracksEvent(event) {
+            for statementObservation in statementObservations {
                 event.send(to: statementObservation.transactionObservation)
             }
         }
@@ -1216,6 +1228,9 @@ extension DatabaseEventKind {
 protocol DatabaseEventProtocol {
     func send(to observer: TransactionObservation)
     func matchesKind(_ databaseEventKind: DatabaseEventKind) -> Bool
+
+    /// Returns an event that outlives the SQLite callback that reported it.
+    func copy() -> Self
 }
 
 /// A database event.
@@ -1537,7 +1552,7 @@ private struct MetalDatabasePreUpdateEventImpl: DatabasePreUpdateEventImpl {
             column: CInt(index),
             sqlite_func: { (connection: SQLiteConnection, column: CInt, value: inout SQLiteValue? ) in
                 sqlite3_preupdate_old(connection, column, &value)
-            })
+            }) ?? .null
     }
     
     func finalDatabaseValue(atIndex index: Int) -> DatabaseValue? {
@@ -1547,7 +1562,7 @@ private struct MetalDatabasePreUpdateEventImpl: DatabasePreUpdateEventImpl {
             column: CInt(index),
             sqlite_func: { (connection: SQLiteConnection, column: CInt, value: inout SQLiteValue? ) in
                 sqlite3_preupdate_new(connection, column, &value)
-            })
+            }) ?? .null
     }
     
     func copy(_ event: DatabasePreUpdateEvent) -> DatabasePreUpdateEvent {
@@ -1575,13 +1590,15 @@ private struct MetalDatabasePreUpdateEventImpl: DatabasePreUpdateEventImpl {
         var columnValues = [DatabaseValue]()
         
         for i in 0..<columnCount {
-            let value = getValue(connection, column: i, sqlite_func: sqlite_func)!
-            columnValues.append(value)
+            columnValues.append(getValue(connection, column: i, sqlite_func: sqlite_func) ?? .null)
         }
         
         return columnValues
     }
     
+    // Answers nil for a column SQLite refuses to read. A VIRTUAL generated column has no stored
+    // value, and sqlite3_preupdate_old and sqlite3_preupdate_new return SQLITE_RANGE for it. Every
+    // caller reads null there, which keeps one value per column so an index still maps to a column.
     private func getValue(
         _ connection: SQLiteConnection,
         column: CInt,
