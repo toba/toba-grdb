@@ -29,6 +29,17 @@ class DatabaseQueueInMemoryTests : GRDBTestCase {
         XCTAssertEqual(baz, "baz")
     }
     
+    func test_shared_in_memory_database_is_in_memory() throws {
+        let name = UUID().uuidString
+        let file = try DatabaseQueue(named: name).read { db -> String in
+            try Row.fetchOne(db, sql: "PRAGMA database_list")!["file"]
+        }
+        // sqlite reports an empty file for an in-memory database, and an absolute path for one
+        // on disk. Without SQLITE_USE_URI it reads the uri as a literal file name and creates
+        // a file in the current directory.
+        XCTAssertEqual(file, "")
+    }
+
     func test_shared_in_memory_databases_are_shared_by_name() throws {
         let nameA = UUID().uuidString
         let dbA = try DatabaseQueue(named: nameA)

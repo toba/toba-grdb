@@ -12,21 +12,58 @@ let darwinPlatforms: [Platform] = [
     .visionOS,
     .watchOS,
 ]
-var swiftSettings: [SwiftSetting] = [
-    .define("SQLITE_ENABLE_FTS5"),
+// Compilation options for the vendored SQLite amalgamation. SQLITE_ENABLE_PREUPDATE_HOOK is the
+// reason this fork compiles its own SQLite: Apple ships the system library without it, and the
+// CloudKit shadow tables in TobaData need sqlite3_preupdate_new to read a changed row. The
+// amalgamation carries snapshot support on every platform, so upstream's Linux carve-out for
+// SQLITE_DISABLE_SNAPSHOT is gone.
+//
+// The amalgamation compiles every virtual table module out by default, while the system library
+// this fork replaced carried them. Each module option below restores one that GRDB exposes an API
+// for. SQLITE_ENABLE_FTS3_PARENTHESIS is what makes AND, OR, NOT and grouping parentheses part of
+// an FTS3 match pattern instead of ordinary tokens.
+//
+// SQLITE_USE_URI is off by default in the amalgamation and on in the system library. DatabaseQueue
+// builds a file: uri for a named in-memory database, so without it SQLite reads that uri as a
+// literal file name and writes a real file into the current directory.
+let sqliteSettings: [CSetting] = [
     .define("SQLITE_ENABLE_SNAPSHOT"),
-    // Not all Linux distributions have support for WAL snapshots.
-    .define("SQLITE_DISABLE_SNAPSHOT", .when(platforms: [.linux])),
+    .define("SQLITE_ENABLE_FTS3"),
+    .define("SQLITE_ENABLE_FTS3_PARENTHESIS"),
+    .define("SQLITE_ENABLE_FTS4"),
+    .define("SQLITE_ENABLE_FTS5"),
+    .define("SQLITE_ENABLE_RTREE"),
+    .define("SQLITE_ENABLE_MATH_FUNCTIONS"),
+    .define("SQLITE_ENABLE_PREUPDATE_HOOK"),
+    .define("SQLITE_USE_URI", to: "1"),
+    .define("SQLITE_DQS", to: "0"),
+    .define("SQLITE_LIKE_DOESNT_MATCH_BLOBS"),
+    .define("SQLITE_OMIT_DEPRECATED"),
 ]
-var cSettings: [CSetting] = []
-var dependencies: [PackageDescription.Package.Dependency] = []
 
-// Don't rely on those environment variables. They are ONLY testing conveniences:
-// $ SQLITE_ENABLE_PREUPDATE_HOOK=1 make test_SPM
-if ProcessInfo.processInfo.environment["SQLITE_ENABLE_PREUPDATE_HOOK"] == "1" {
-    swiftSettings.append(.define("SQLITE_ENABLE_PREUPDATE_HOOK"))
-    cSettings.append(.define("GRDB_SQLITE_ENABLE_PREUPDATE_HOOK"))
-}
+// Applied when clang builds the GRDBSQLite module for the Swift importer. That build does not see
+// sqliteSettings, so sqlite3.h hides its preupdate declarations. shim.h re-declares them under this
+// name to fill the gap.
+var cSettings: [CSetting] = [.define("GRDB_SQLITE_ENABLE_PREUPDATE_HOOK")]
+
+// The same options as Swift conditionals. GRDB reads them to decide which of its own APIs to
+// compile. SQLITE_DQS and SQLITE_USE_URI carry a value, so neither has a Swift form. Upstream
+// gates the preupdate pair
+// behind an environment variable it tells nobody to rely on. This fork applies both unconditionally,
+// because the vendored amalgamation always carries the hook.
+var swiftSettings: [SwiftSetting] = [
+    .define("SQLITE_ENABLE_SNAPSHOT"),
+    .define("SQLITE_ENABLE_FTS3"),
+    .define("SQLITE_ENABLE_FTS3_PARENTHESIS"),
+    .define("SQLITE_ENABLE_FTS4"),
+    .define("SQLITE_ENABLE_FTS5"),
+    .define("SQLITE_ENABLE_RTREE"),
+    .define("SQLITE_ENABLE_MATH_FUNCTIONS"),
+    .define("SQLITE_ENABLE_PREUPDATE_HOOK"),
+    .define("SQLITE_LIKE_DOESNT_MATCH_BLOBS"),
+    .define("SQLITE_OMIT_DEPRECATED"),
+]
+var dependencies: [PackageDescription.Package.Dependency] = []
 
 // The SPI_BUILDER environment variable enables documentation building
 // on <https://swiftpackageindex.com/groue/GRDB.swift>. See
@@ -54,17 +91,20 @@ let package = Package(
         .watchOS(.v7),
     ],
     products: [
-        // GRDB+SQLCipher: Delete the GRDBSQLite library
-        .library(name: "GRDBSQLite", targets: ["GRDBSQLite"]),
-        .library(name: "GRDB", targets: ["GRDB"]),
-        .library(name: "GRDB-dynamic", type: .dynamic, targets: ["GRDB"]),
+        // One product over both targets. A consumer writes `import GRDB` and
+        // `import GRDBSQLite`, and SwiftPM absorbs each target once.
+        .library(name: "GRDB", targets: ["GRDB", "GRDBSQLite"]),
     ],
     dependencies: dependencies,
     targets: [
-        // GRDB+SQLCipher: Delete the GRDBSQLite target
-        .systemLibrary(
+        // The vendored SQLite amalgamation. GRDB imports this module by name, so the target keeps
+        // the name GRDB expects. shim.h comes from upstream and wraps the variadic C functions that
+        // Swift cannot call. amalgamation.c is the only compiled source, and it includes sqlite3.c,
+        // so the amalgamation stays byte for byte the sqlite.org release.
+        .target(
             name: "GRDBSQLite",
-            providers: [.apt(["libsqlite3-dev"])]),
+            exclude: ["sqlite3.c"],
+            cSettings: sqliteSettings),
         // GRDB+SQLCipher: Uncomment the GRDBSQLCipher target
         //.target(
         //    name: "GRDBSQLCipher",

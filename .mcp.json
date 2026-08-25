@@ -1,0 +1,9 @@
+{
+	"mcpServers": {
+		"xc-swift": { "command": "/opt/homebrew/bin/xc-swift" },
+		"xc-build": {
+			"command": "/opt/homebrew/bin/xc-build",
+			"args": ["--no-sandbox"]
+		}
+	}
+}

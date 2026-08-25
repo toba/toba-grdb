@@ -1,3 +1,34 @@
+# The Toba fork of GRDB
+
+This repository forks [groue/GRDB.swift](https://github.com/groue/GRDB.swift). It carries one
+patch: it compiles its own SQLite instead of linking the system library. Apple ships SQLite
+without `SQLITE_ENABLE_PREUPDATE_HOOK`, and `toba-data` calls `sqlite3_preupdate_new` to read a
+changed row in a CloudKit shadow table. The upstream README follows this section unchanged.
+
+| Path | What the patch does |
+|---|---|
+| `Package.swift` | Declares `GRDBSQLite` as a C target rather than a system library, applies the SQLite defines unconditionally, and exposes one library product over the `GRDB` and `GRDBSQLite` targets |
+| `Sources/GRDBSQLite/` | Carries the SQLite 3.53.1 amalgamation. `amalgamation.c` is the one compiled source and it includes `sqlite3.c`, so `sqlite3.c` stays byte for byte the sqlite.org release |
+| `Scripts/upgrade-sqlite.sh` | Copies a newer amalgamation into that directory |
+
+Upstream gates the preupdate defines behind a `SQLITE_ENABLE_PREUPDATE_HOOK` environment variable
+that its own comment tells nobody to rely on. This fork applies them always, because the vendored
+amalgamation always carries the hook. It also drops upstream's `SQLITE_DISABLE_SNAPSHOT` carve-out
+for Linux, which existed because a distribution SQLite may lack snapshot support.
+
+`.gitmodules` and the `SQLiteCustom/src` gitlink are gone. SwiftPM runs a recursive submodule init
+on every package checkout, and that pulled 111 MB of `SQLiteLib` that this build never reads.
+
+## Merge a new upstream release
+
+1. Fetch the upstream history: `git fetch upstream`
+2. Merge the release tag: `git merge v7.12.0`
+3. Resolve `Package.swift`. Keep `sqliteSettings`, the `GRDBSQLite` C target and the single
+   library product. Take every other upstream change to the manifest.
+4. Move any upstream edit of `Sources/GRDBSQLite/shim.h` to `Sources/GRDBSQLite/include/shim.h`,
+   which is where this fork keeps that file.
+5. Refuse an upstream change that restores `.gitmodules` or the `SQLiteCustom/src` gitlink.
+
 <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/groue/GRDB.swift/master/GRDB~dark.png">
     <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/groue/GRDB.swift/master/GRDB.png">

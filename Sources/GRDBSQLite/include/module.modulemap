@@ -1,0 +1,7 @@
+// GRDB imports this module by name. Only shim.h belongs in the umbrella,
+// because shim.h pulls in sqlite3.h itself. An umbrella directory would also
+// pull in sqlite3ext.h, which serves loadable extensions and not this build.
+module GRDBSQLite {
+    header "shim.h"
+    export *
+}
